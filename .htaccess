@@ -1,0 +1,32 @@
+# Hostinger / Apache config
+DirectoryIndex index.html index.php
+
+# Block access to the database file
+<Files "data.db">
+  Require all denied
+</Files>
+<Files "data.db-journal">
+  Require all denied
+</Files>
+<Files "data.db-wal">
+  Require all denied
+</Files>
+<Files "data.db-shm">
+  Require all denied
+</Files>
+
+# Cache assets
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 7 days"
+  ExpiresByType application/javascript "access plus 7 days"
+  ExpiresByType image/svg+xml "access plus 30 days"
+</IfModule>
+
+# Force HTTPS (Hostinger)
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTPS} off
+  RewriteCond %{HTTP_HOST} !=localhost
+  RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
+</IfModule>
