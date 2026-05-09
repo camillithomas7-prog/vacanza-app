@@ -63,8 +63,26 @@ try {
 
     // ---------------- MEMBERS ----------------
     case 'members': {
-      require_member();
-      $rows = db()->query("SELECT id, name, avatar, budget, budget_paid, is_admin FROM member WHERE trip_id = 1 ORDER BY id")->fetchAll();
+      $me = require_member();
+      if ($me['is_admin']) {
+        $rows = db()->query("SELECT id, name, avatar, budget, budget_paid, is_admin FROM member WHERE trip_id = 1 ORDER BY id")->fetchAll();
+      } else {
+        // Non-admin: vede nomi/avatar di tutti (per le label "pagato da X") ma niente budget altrui
+        $rows = db()->query("SELECT id, name, avatar, is_admin FROM member WHERE trip_id = 1 ORDER BY id")->fetchAll();
+        $stmt = db()->prepare("SELECT budget, budget_paid FROM member WHERE id = ?");
+        $stmt->execute([$me['id']]);
+        $own = $stmt->fetch();
+        foreach ($rows as &$r) {
+          if ((int)$r['id'] === (int)$me['id']) {
+            $r['budget'] = (float)$own['budget'];
+            $r['budget_paid'] = (int)$own['budget_paid'];
+          } else {
+            $r['budget'] = 0;
+            $r['budget_paid'] = 0;
+          }
+        }
+        unset($r);
+      }
       json_response(['members' => $rows]);
     }
 
@@ -107,24 +125,48 @@ try {
 
     // ---------------- EXPENSES ----------------
     case 'expenses': {
-      require_member();
-      $rows = db()->query("
-        SELECT e.*, m.name as paid_by_name
-        FROM expense e
-        LEFT JOIN member m ON m.id = e.paid_by_member_id
-        WHERE e.trip_id = 1
-        ORDER BY datetime(e.occurred_at) DESC, e.id DESC
-      ")->fetchAll();
-      // attach shares
-      $stmt = db()->prepare("
-        SELECT s.*, m.name as member_name
-        FROM expense_share s JOIN member m ON m.id = s.member_id
-        WHERE s.expense_id = ?
-        ORDER BY s.id
-      ");
-      foreach ($rows as &$e) {
-        $stmt->execute([$e['id']]);
-        $e['shares'] = $stmt->fetchAll();
+      $me = require_member();
+      if ($me['is_admin']) {
+        $rows = db()->query("
+          SELECT e.*, m.name as paid_by_name
+          FROM expense e
+          LEFT JOIN member m ON m.id = e.paid_by_member_id
+          WHERE e.trip_id = 1
+          ORDER BY e.occurred_at DESC, e.id DESC
+        ")->fetchAll();
+        $stmt = db()->prepare("
+          SELECT s.*, m.name as member_name
+          FROM expense_share s JOIN member m ON m.id = s.member_id
+          WHERE s.expense_id = ?
+          ORDER BY s.id
+        ");
+        foreach ($rows as &$e) {
+          $stmt->execute([$e['id']]);
+          $e['shares'] = $stmt->fetchAll();
+        }
+        unset($e);
+      } else {
+        // Non-admin: solo spese che lo coinvolgono, e solo la propria quota
+        $stmt = db()->prepare("
+          SELECT DISTINCT e.*, m.name as paid_by_name
+          FROM expense e
+          LEFT JOIN member m ON m.id = e.paid_by_member_id
+          JOIN expense_share s ON s.expense_id = e.id AND s.member_id = ?
+          WHERE e.trip_id = 1
+          ORDER BY e.occurred_at DESC, e.id DESC
+        ");
+        $stmt->execute([$me['id']]);
+        $rows = $stmt->fetchAll();
+        $sharesStmt = db()->prepare("
+          SELECT s.*, m.name as member_name
+          FROM expense_share s JOIN member m ON m.id = s.member_id
+          WHERE s.expense_id = ? AND s.member_id = ?
+        ");
+        foreach ($rows as &$e) {
+          $sharesStmt->execute([$e['id'], $me['id']]);
+          $e['shares'] = $sharesStmt->fetchAll();
+        }
+        unset($e);
       }
       json_response(['expenses' => $rows]);
     }
@@ -132,6 +174,37 @@ try {
     case 'expense_create': {
       $me = require_member();
       $b = body();
+
+      // Non-admin: forziamo modalità "personale" — single share = self, paid by treasurer
+      if (!$me['is_admin']) {
+        $title    = trim($b['title'] ?? '');
+        $category = $b['category'] ?? 'altro';
+        $total    = round((float)($b['total'] ?? 0), 2);
+        $notes    = $b['notes'] ?? null;
+        $occurredAt = $b['occurred_at'] ?? null;
+        if ($total <= 0 || !$title) json_response(['error' => 'Inserisci descrizione e importo'], 400);
+
+        $tripRow = db()->query("SELECT payer_member_id FROM trip WHERE id = 1")->fetch();
+        $treasurerId = (int)($tripRow['payer_member_id'] ?? 0);
+        if (!$treasurerId) $treasurerId = 1;
+
+        $pdo = db();
+        $pdo->beginTransaction();
+        try {
+          $stmt = $pdo->prepare("INSERT INTO expense (trip_id, title, category, total, paid_by_member_id, split_mode, notes, occurred_at, created_by_member_id) VALUES (1, ?, ?, ?, ?, 'custom', ?, COALESCE(?, CURRENT_TIMESTAMP), ?)");
+          $stmt->execute([$title, $category, $total, $treasurerId, $notes, $occurredAt, $me['id']]);
+          $expenseId = $pdo->lastInsertId();
+          $shareStmt = $pdo->prepare("INSERT INTO expense_share (expense_id, member_id, amount) VALUES (?, ?, ?)");
+          $shareStmt->execute([$expenseId, $me['id'], $total]);
+          $pdo->commit();
+          json_response(['id' => $expenseId]);
+        } catch (Exception $e) {
+          $pdo->rollBack();
+          json_response(['error' => $e->getMessage()], 400);
+        }
+      }
+
+      // Admin: flusso completo (equa/items/custom)
       $title    = trim($b['title'] ?? '');
       $category = $b['category'] ?? 'altro';
       $total    = round((float)($b['total'] ?? 0), 2);
@@ -188,6 +261,54 @@ try {
       }
     }
 
+    case 'expense_update': {
+      $me = require_member();
+      $b = body();
+      $id = (int)($b['id'] ?? 0);
+      $stmt = db()->prepare("SELECT * FROM expense WHERE id = ? AND trip_id = 1");
+      $stmt->execute([$id]);
+      $e = $stmt->fetch();
+      if (!$e) json_response(['error' => 'not found'], 404);
+
+      // Non-admin: solo le proprie spese personali (single-share = self)
+      if (!$me['is_admin']) {
+        if ((int)$e['created_by_member_id'] !== (int)$me['id']) {
+          json_response(['error' => 'Puoi modificare solo le tue spese'], 403);
+        }
+        $cnt = db()->prepare("SELECT COUNT(*) AS n FROM expense_share WHERE expense_id = ?");
+        $cnt->execute([$id]);
+        if ((int)$cnt->fetch()['n'] !== 1) {
+          json_response(['error' => 'Le spese di gruppo le modifica solo l\'admin'], 403);
+        }
+      }
+
+      $title    = trim($b['title'] ?? $e['title']);
+      $category = $b['category'] ?? $e['category'];
+      $total    = round((float)($b['total'] ?? $e['total']), 2);
+      $notes    = array_key_exists('notes', $b) ? $b['notes'] : $e['notes'];
+      if ($total <= 0 || !$title) json_response(['error' => 'Dati non validi'], 400);
+
+      $pdo = db();
+      $pdo->beginTransaction();
+      try {
+        $u = $pdo->prepare("UPDATE expense SET title = ?, category = ?, total = ?, notes = ? WHERE id = ?");
+        $u->execute([$title, $category, $total, $notes, $id]);
+
+        // Se è una spesa personale (single share), aggiorno anche la quota
+        $cnt = $pdo->prepare("SELECT COUNT(*) AS n FROM expense_share WHERE expense_id = ?");
+        $cnt->execute([$id]);
+        if ((int)$cnt->fetch()['n'] === 1) {
+          $us = $pdo->prepare("UPDATE expense_share SET amount = ? WHERE expense_id = ?");
+          $us->execute([$total, $id]);
+        }
+        $pdo->commit();
+        json_response(['ok' => true]);
+      } catch (Exception $ex) {
+        $pdo->rollBack();
+        json_response(['error' => $ex->getMessage()], 400);
+      }
+    }
+
     case 'expense_delete': {
       $me = require_member();
       $b = body();
@@ -197,7 +318,7 @@ try {
       $e = $stmt->fetch();
       if (!$e) json_response(['error' => 'not found'], 404);
       if (!$me['is_admin'] && (int)$e['created_by_member_id'] !== (int)$me['id']) {
-        json_response(['error' => 'forbidden'], 403);
+        json_response(['error' => 'Puoi eliminare solo le tue spese'], 403);
       }
       $stmt = db()->prepare("DELETE FROM expense WHERE id = ?");
       $stmt->execute([$id]);
@@ -206,25 +327,37 @@ try {
 
     // ---------------- SETTLEMENTS ----------------
     case 'settlements': {
-      require_member();
-      $rows = db()->query("
+      $me = require_member();
+      $sql = "
         SELECT s.*, mf.name as from_name, mt.name as to_name
         FROM settlement s
         JOIN member mf ON mf.id = s.from_member_id
         JOIN member mt ON mt.id = s.to_member_id
         WHERE s.trip_id = 1
-        ORDER BY datetime(s.created_at) DESC
-      ")->fetchAll();
-      json_response(['settlements' => $rows]);
+      ";
+      $params = [];
+      if (!$me['is_admin']) {
+        $sql .= " AND (s.from_member_id = ? OR s.to_member_id = ?)";
+        $params = [$me['id'], $me['id']];
+      }
+      $sql .= " ORDER BY s.created_at DESC";
+      $stmt = db()->prepare($sql);
+      $stmt->execute($params);
+      json_response(['settlements' => $stmt->fetchAll()]);
     }
 
     case 'settlement_create': {
-      require_member();
+      $me = require_member();
       $b = body();
+      $fromId = (int)($b['from_member_id'] ?? 0);
+      $toId = (int)($b['to_member_id'] ?? 0);
+      if (!$me['is_admin'] && $fromId !== (int)$me['id']) {
+        json_response(['error' => 'Puoi registrare solo i tuoi acconti'], 403);
+      }
       $stmt = db()->prepare("INSERT INTO settlement (trip_id, from_member_id, to_member_id, amount, category, note) VALUES (1, ?, ?, ?, ?, ?)");
       $stmt->execute([
-        (int)($b['from_member_id'] ?? 0),
-        (int)($b['to_member_id'] ?? 0),
+        $fromId,
+        $toId,
         round((float)($b['amount'] ?? 0), 2),
         $b['category'] ?? null,
         $b['note'] ?? null,
@@ -272,7 +405,7 @@ try {
 
     // ---------------- SUMMARY ----------------
     case 'summary': {
-      require_member();
+      $me = require_member();
       $pdo = db();
       $trip = $pdo->query("SELECT * FROM trip WHERE id = 1")->fetch();
       $members = $pdo->query("SELECT id, name, budget, budget_paid FROM member WHERE trip_id = 1 ORDER BY id")->fetchAll();
@@ -344,12 +477,29 @@ try {
         if ($creditors[$j]['amt'] < 0.01) $j++;
       }
 
+      if (!$me['is_admin']) {
+        $perMember = array_filter($perMember, fn($m) => (int)$m['id'] === (int)$me['id']);
+        $suggestions = array_filter($suggestions, fn($s) => $s['from_id'] === (int)$me['id'] || $s['to_id'] === (int)$me['id']);
+        // Per non-admin, byCategory e totalSpent diventano "le tue spese"
+        $stmt = $pdo->prepare("
+          SELECT e.category, SUM(s.amount) AS total, COUNT(DISTINCT e.id) AS n
+          FROM expense_share s JOIN expense e ON e.id = s.expense_id
+          WHERE e.trip_id = 1 AND s.member_id = ?
+          GROUP BY e.category
+          ORDER BY total DESC
+        ");
+        $stmt->execute([$me['id']]);
+        $byCat = $stmt->fetchAll();
+        $totalSpent = 0;
+        foreach ($byCat as $c) $totalSpent += (float)$c['total'];
+      }
+
       json_response([
         'trip' => $trip,
         'members' => array_values($perMember),
         'by_category' => $byCat,
         'total_spent' => $totalSpent,
-        'suggestions' => $suggestions,
+        'suggestions' => array_values($suggestions),
       ]);
     }
 

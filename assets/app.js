@@ -150,6 +150,11 @@ function renderShell() {
     state.me = null;
     location.reload();
   });
+  // Hide "Persone" tab for non-admin (solo Thomas vede i conti di tutti)
+  if (!state.me.is_admin) {
+    const peopleBtn = document.querySelector('.tabbar button[data-route="people"]');
+    if (peopleBtn) peopleBtn.style.display = 'none';
+  }
   document.querySelectorAll('.tabbar button').forEach(b => {
     b.addEventListener('click', () => {
       const r = b.dataset.route;
@@ -168,9 +173,10 @@ function render() {
   screen.innerHTML = '';
   if (state.route === 'home') screen.appendChild(viewHome());
   else if (state.route === 'expenses') screen.appendChild(viewExpenses());
-  else if (state.route === 'people') screen.appendChild(viewPeople());
+  else if (state.route === 'people' && state.me.is_admin) screen.appendChild(viewPeople());
   else if (state.route === 'settle') screen.appendChild(viewSettle());
-  else if (state.route === 'settings') screen.appendChild(viewSettings());
+  else if (state.route === 'settings' && state.me.is_admin) screen.appendChild(viewSettings());
+  else { state.route = 'home'; screen.appendChild(viewHome()); }
 }
 
 // ============ VIEW: HOME ============
@@ -283,7 +289,7 @@ function viewHome() {
         ${trip.date_start ? ' · ' + trip.date_start + (trip.date_end ? ' → ' + trip.date_end : '') : ''}
       </div>
       <div style="margin-top:6px;font-size:13px;color:var(--muted)">
-        Totale gruppo: <b style="color:var(--text)">${fmt(sum.total_spent)}</b>
+        ${state.me.is_admin ? 'Totale gruppo' : 'Tue spese totali'}: <b style="color:var(--text)">${fmt(sum.total_spent)}</b>
       </div>
     `;
     wrap.appendChild(tripInfo);
@@ -293,7 +299,7 @@ function viewHome() {
   if (sum.by_category.length) {
     const cat = document.createElement('div');
     cat.className = 'card';
-    cat.innerHTML = `<h2>Per categoria</h2>` + sum.by_category.map(c => {
+    cat.innerHTML = `<h2>${state.me.is_admin ? 'Per categoria' : 'Le tue spese per categoria'}</h2>` + sum.by_category.map(c => {
       const info = catBy(c.category);
       const pct = sum.total_spent > 0 ? (c.total / sum.total_spent) * 100 : 0;
       return `
@@ -430,25 +436,85 @@ function viewPeople() {
 function viewSettle() {
   const wrap = document.createElement('div');
   const treasurerId = state.trip?.payer_member_id || 1;
-  const treasurer = state.summary.members.find(m => m.id === treasurerId);
+  const treasurerMember = state.members.find(x => x.id === treasurerId);
+  const treasurerName = treasurerMember?.name || 'Tesoriere';
+  const isAdmin = state.me.is_admin;
+
+  // ============= NON-ADMIN: vista semplificata =============
+  if (!isAdmin) {
+    const meSum = state.summary.members.find(m => m.id === state.me.id) || { spent: 0, settled_paid: 0 };
+    const dovuto = meSum.spent;
+    const versato = meSum.settled_paid;
+    const residuo = +(dovuto - versato).toFixed(2);
+
+    const head = document.createElement('div');
+    head.className = 'card';
+    head.innerHTML = `
+      <h2>Il tuo saldo verso ${escapeHtml(treasurerName)}</h2>
+      <div class="stat-grid">
+        <div class="stat"><div class="label">Tue quote</div><div class="value">${fmt(dovuto)}</div></div>
+        <div class="stat"><div class="label">Hai versato</div><div class="value">${fmt(versato)}</div></div>
+      </div>
+      <div style="margin-top:12px">
+        ${residuo > 0.01
+          ? `<div class="stat bad"><div class="label">Devi ancora</div><div class="value">${fmt(residuo)}</div></div>`
+          : residuo < -0.01
+            ? `<div class="stat good"><div class="label">${escapeHtml(treasurerName)} ti deve</div><div class="value">${fmt(-residuo)}</div></div>`
+            : `<div class="stat good"><div class="label">Saldo</div><div class="value">in pari ✓</div></div>`}
+      </div>
+      <button class="btn primary full" id="addAcconto" style="margin-top:14px">💰 + Registra un mio acconto</button>
+    `;
+    head.querySelector('#addAcconto').addEventListener('click', () => openAcconto());
+    wrap.appendChild(head);
+
+    const histCard = document.createElement('div');
+    histCard.className = 'card';
+    histCard.innerHTML = `<h2>I tuoi acconti</h2><div id="settHist"></div>`;
+    wrap.appendChild(histCard);
+    api('settlements').then(({ settlements }) => {
+      const box = histCard.querySelector('#settHist');
+      if (!settlements.length) {
+        box.innerHTML = '<div class="muted" style="font-size:13px;padding:8px 0">Nessun acconto registrato.</div>';
+        return;
+      }
+      box.innerHTML = settlements.map(s => {
+        const p = accontoBy(s.category);
+        return `
+          <div class="expense-row" data-sid="${s.id}" style="cursor:pointer">
+            <div class="expense-icon">${p.emoji}</div>
+            <div class="expense-meta">
+              <div class="title">→ ${escapeHtml(s.to_name)}<span class="chip" style="margin-left:6px;font-size:10px">${p.name}</span></div>
+              <div class="sub">${dateLabel(s.created_at)}${s.note ? ' · ' + escapeHtml(s.note) : ''}</div>
+            </div>
+            <div class="expense-amount">${fmt(s.amount)}</div>
+          </div>`;
+      }).join('');
+      box.querySelectorAll('[data-sid]').forEach(r => {
+        r.addEventListener('click', () => {
+          const s = settlements.find(x => x.id === +r.dataset.sid);
+          if (s) openSettlementEdit(s);
+        });
+      });
+    });
+    return wrap;
+  }
+
+  // ============= ADMIN: vista completa =============
+  const treasurer = state.summary.members.find(m => m.id === treasurerId) || { name: treasurerName };
   const isTreasurer = state.me.id === treasurerId;
 
-  // Add acconto button
   const addCard = document.createElement('div');
   addCard.className = 'card';
   addCard.innerHTML = `
     <h2>Acconti</h2>
     <p style="margin:0 0 12px;font-size:13px;color:var(--muted)">
-      ${isTreasurer
-        ? `Registra qui i bonifici che ricevi dagli altri.`
-        : `Quando bonifici a ${treasurer.name}, registralo qui per aggiornare il tuo saldo.`}
+      Registra qui i bonifici che ricevi dagli altri o le tue restituzioni.
     </p>
     <button class="btn primary full" id="addAcconto">💰 + Registra acconto</button>
   `;
   addCard.querySelector('#addAcconto').addEventListener('click', () => openAcconto());
   wrap.appendChild(addCard);
 
-  // Open balances per person (vs treasurer)
   const others = state.summary.members.filter(m => m.id !== treasurerId);
   const debtors = others.filter(m => (m.spent - m.settled_paid) > 0.01);
   const creditors = others.filter(m => (m.settled_paid - m.spent) > 0.01);
@@ -623,6 +689,7 @@ function openModal(html, onMount) {
 
 // ============ NEW EXPENSE FLOW ============
 function openNewExpense() {
+  if (!state.me.is_admin) return openMyExpense();
   let cat = CATS[0];
   let payerId = state.trip?.payer_member_id || state.me.id;
   let participantIds = state.members.map(m => m.id);
@@ -790,23 +857,125 @@ function openNewExpense() {
   });
 }
 
+// ============ MY PERSONAL EXPENSE (non-admin) ============
+function openMyExpense(existing) {
+  const isEdit = !!existing;
+  const treasurerId = state.trip?.payer_member_id || 1;
+  const treasurer = state.members.find(x => x.id === treasurerId);
+  const treasurerName = treasurer?.name || 'Tesoriere';
+  let cat = isEdit ? catBy(existing.category) : CATS[0];
+
+  function html() {
+    return `
+      <h2>${isEdit ? '✏️ Modifica la tua spesa' : 'La tua spesa'}</h2>
+      <p style="margin:0 0 14px;font-size:13px;color:var(--muted)">
+        Aggiungi qui solo la <b>tua quota</b> personale (es. la tua cena, la tua escursione).
+        Verrà aggiunta al tuo saldo verso ${escapeHtml(treasurerName)}.
+      </p>
+      <div class="cat-grid">
+        ${CATS.map(c => `<button type="button" class="cat-tile ${c.id === cat.id ? 'active' : ''}" data-cat="${c.id}"><span>${c.emoji}</span>${c.name}</button>`).join('')}
+      </div>
+      <div class="form-group" style="margin-top:14px"><label>Descrizione</label>
+        <input id="myxTitle" placeholder="es. Cena al Faro, Escursione Capri..." />
+      </div>
+      <div class="form-group"><label>Importo (€)</label>
+        <input type="number" inputmode="decimal" step="0.01" id="myxTotal" placeholder="0,00" />
+      </div>
+      <div class="form-group"><label>Note (facoltativa)</label>
+        <textarea id="myxNotes" rows="2"></textarea>
+      </div>
+      <div class="row gap" style="margin-top:14px">
+        ${isEdit ? '<button class="btn danger" id="myxDelete">🗑️ Elimina</button>' : ''}
+        <button class="btn ghost" id="myxCancel" style="flex:1">Annulla</button>
+        <button class="btn primary" id="myxSave" style="flex:2">${isEdit ? 'Salva' : 'Aggiungi'}</button>
+      </div>
+    `;
+  }
+
+  openModal(html(), (modal, close) => {
+    bind(modal, close);
+    // Pre-fill on edit
+    if (isEdit) {
+      modal.querySelector('#myxTitle').value = existing.title || '';
+      modal.querySelector('#myxTotal').value = existing.total || '';
+      modal.querySelector('#myxNotes').value = existing.notes || '';
+    } else {
+      setTimeout(() => modal.querySelector('#myxTitle')?.focus(), 60);
+    }
+
+    function bind(modal, close) {
+      modal.querySelectorAll('[data-cat]').forEach(b => b.addEventListener('click', () => {
+        cat = catBy(b.dataset.cat);
+        rerender(modal, close);
+      }));
+      modal.querySelector('#myxCancel').addEventListener('click', close);
+      modal.querySelector('#myxSave').addEventListener('click', () => save(modal, close));
+      modal.querySelector('#myxDelete')?.addEventListener('click', () => del(close));
+    }
+    function rerender(modal, close) {
+      const t = modal.querySelector('#myxTitle')?.value || '';
+      const a = modal.querySelector('#myxTotal')?.value || '';
+      const n = modal.querySelector('#myxNotes')?.value || '';
+      modal.innerHTML = '<div class="modal-handle"></div>' + html();
+      modal.querySelector('#myxTitle').value = t;
+      modal.querySelector('#myxTotal').value = a;
+      modal.querySelector('#myxNotes').value = n;
+      bind(modal, close);
+    }
+    async function save(modal, close) {
+      const title = modal.querySelector('#myxTitle').value.trim();
+      const total = parseFloat((modal.querySelector('#myxTotal').value || '').replace(',', '.'));
+      const notes = modal.querySelector('#myxNotes').value;
+      if (!title) return toast('Inserisci una descrizione', true);
+      if (!total || total <= 0) return toast('Importo non valido', true);
+      try {
+        if (isEdit) {
+          await api('expense_update', { id: existing.id, title, category: cat.id, total, notes });
+          toast('Spesa aggiornata');
+        } else {
+          await api('expense_create', { title, category: cat.id, total, notes });
+          toast('Spesa aggiunta 🎉');
+        }
+        close();
+        await loadAll();
+        render();
+      } catch (e) { toast(e.message, true); }
+    }
+    async function del(close) {
+      if (!confirm('Eliminare questa spesa?')) return;
+      try {
+        await api('expense_delete', { id: existing.id });
+        toast('Spesa eliminata');
+        close();
+        await loadAll();
+        render();
+      } catch (e) { toast(e.message, true); }
+    }
+  });
+}
+
 // ============ EXPENSE DETAIL ============
 function openExpenseDetail(id) {
   const e = state.expenses.find(x => x.id === id);
   if (!e) return;
   const info = catBy(e.category);
   const canDelete = state.me.is_admin || e.created_by_member_id === state.me.id;
+  const isMyPersonal = e.created_by_member_id === state.me.id && (e.shares || []).length === 1;
+  // Per non-admin con propria spesa personale, apri direttamente la modale di edit
+  if (!state.me.is_admin && isMyPersonal) {
+    return openMyExpense(e);
+  }
   const html = `
     <h2>${info.emoji} ${escapeHtml(e.title)}</h2>
     <div class="muted" style="font-size:13px">${dateLabel(e.occurred_at)}</div>
     <div class="stat-grid" style="margin-top:14px">
       <div class="stat"><div class="label">Totale</div><div class="value">${fmt(e.total)}</div></div>
-      <div class="stat"><div class="label">Pagato da</div><div class="value" style="font-size:16px">${e.paid_by_name}</div></div>
+      <div class="stat"><div class="label">Pagato da</div><div class="value" style="font-size:16px">${escapeHtml(e.paid_by_name || '')}</div></div>
     </div>
-    <h3 style="margin-top:18px">Quote</h3>
+    <h3 style="margin-top:18px">${state.me.is_admin ? 'Quote' : 'La tua quota'}</h3>
     ${(e.shares || []).map(s => `
       <div class="share-row">
-        <div class="who">${avatarHTML({ id: s.member_id, name: s.member_name }, 28)}<b>${s.member_name}</b>${s.label ? `<span class="muted" style="font-size:12px"> · ${escapeHtml(s.label)}</span>` : ''}</div>
+        <div class="who">${avatarHTML({ id: s.member_id, name: s.member_name }, 28)}<b>${escapeHtml(s.member_name)}</b>${s.label ? `<span class="muted" style="font-size:12px"> · ${escapeHtml(s.label)}</span>` : ''}</div>
         <div style="text-align:right;font-weight:600">${fmt(s.amount)}</div>
       </div>
     `).join('')}
