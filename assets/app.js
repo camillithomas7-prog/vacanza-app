@@ -527,7 +527,7 @@ function viewSettle() {
     box.innerHTML = settlements.map(s => {
       const p = accontoBy(s.category);
       return `
-      <div class="expense-row">
+      <div class="expense-row" data-sid="${s.id}" style="cursor:pointer">
         <div class="expense-icon">${p.emoji}</div>
         <div class="expense-meta">
           <div class="title">${s.from_name} → ${s.to_name}<span class="chip" style="margin-left:6px;font-size:10px">${p.name}</span></div>
@@ -536,6 +536,12 @@ function viewSettle() {
         <div class="expense-amount">${fmt(s.amount)}</div>
       </div>
     `;}).join('');
+    box.querySelectorAll('[data-sid]').forEach(r => {
+      r.addEventListener('click', () => {
+        const s = settlements.find(x => x.id === +r.dataset.sid);
+        if (s) openSettlementEdit(s);
+      });
+    });
   });
 
   return wrap;
@@ -992,6 +998,102 @@ function openAcconto(prefilledFromId) {
   });
 }
 
+// ============ SETTLEMENT EDIT/DELETE ============
+function openSettlementEdit(settlement) {
+  const isMine = state.me.id === settlement.from_member_id;
+  const canEdit = state.me.is_admin || isMine;
+  let purpose = settlement.category || 'cassa';
+
+  function html() {
+    return `
+      <h2>💰 Acconto</h2>
+      <p style="margin:0 0 14px;font-size:13px;color:var(--muted)">
+        ${escapeHtml(settlement.from_name)} → ${escapeHtml(settlement.to_name)} · ${dateLabel(settlement.created_at)}
+      </p>
+      ${canEdit ? `
+        <div class="form-group">
+          <label>A cosa si riferisce</label>
+          <div class="cat-grid">
+            ${ACCONTO_PURPOSES.map(p => `<button type="button" class="cat-tile ${p.id === purpose ? 'active' : ''}" data-purpose="${p.id}"><span>${p.emoji}</span>${p.name}</button>`).join('')}
+          </div>
+        </div>
+        <div class="form-group"><label>Importo (€)</label>
+          <input type="number" inputmode="decimal" step="0.01" id="seAmt" />
+        </div>
+        <div class="form-group"><label>Nota</label>
+          <input id="seNote" placeholder="es. bonifico Revolut..." />
+        </div>
+        <div class="row gap" style="margin-top:14px">
+          <button class="btn danger" id="seDelete" style="flex:1">🗑️ Elimina</button>
+          <button class="btn ghost" id="seCancel" style="flex:1">Annulla</button>
+          <button class="btn primary" id="seSave" style="flex:2">Salva</button>
+        </div>
+      ` : `
+        <div class="stat-grid">
+          <div class="stat"><div class="label">Importo</div><div class="value">${fmt(settlement.amount)}</div></div>
+          <div class="stat"><div class="label">Categoria</div><div class="value" style="font-size:18px">${accontoBy(settlement.category).emoji} ${accontoBy(settlement.category).name}</div></div>
+        </div>
+        ${settlement.note ? `<div class="card" style="margin-top:14px"><h2>Nota</h2><div style="font-size:14px">${escapeHtml(settlement.note)}</div></div>` : ''}
+        <div class="muted" style="font-size:13px;margin-top:14px;text-align:center">Solo chi l'ha registrato (o l'admin) può modificarlo.</div>
+      `}
+    `;
+  }
+
+  openModal(html(), (modal, close) => {
+    bind(modal, close);
+
+    function bind(modal, close) {
+      modal.querySelectorAll('[data-purpose]').forEach(b => b.addEventListener('click', () => {
+        purpose = b.dataset.purpose;
+        rerender(modal, close);
+      }));
+      modal.querySelector('#seCancel')?.addEventListener('click', close);
+      modal.querySelector('#seSave')?.addEventListener('click', () => save(modal, close));
+      modal.querySelector('#seDelete')?.addEventListener('click', () => del(close));
+      // Pre-fill values
+      const amtEl = modal.querySelector('#seAmt');
+      const noteEl = modal.querySelector('#seNote');
+      if (amtEl && !amtEl.value) amtEl.value = settlement.amount;
+      if (noteEl && !noteEl.value) noteEl.value = settlement.note || '';
+    }
+    function rerender(modal, close) {
+      const amt = modal.querySelector('#seAmt')?.value;
+      const note = modal.querySelector('#seNote')?.value;
+      modal.innerHTML = '<div class="modal-handle"></div>' + html();
+      bind(modal, close);
+      if (amt && modal.querySelector('#seAmt')) modal.querySelector('#seAmt').value = amt;
+      if (note != null && modal.querySelector('#seNote')) modal.querySelector('#seNote').value = note;
+    }
+    async function save(modal, close) {
+      const amt = parseFloat((modal.querySelector('#seAmt').value || '').replace(',', '.'));
+      const note = modal.querySelector('#seNote').value;
+      if (!amt || amt <= 0) return toast('Importo non valido', true);
+      try {
+        await api('settlement_update', {
+          id: settlement.id,
+          amount: amt,
+          category: purpose,
+          note,
+        });
+        toast('Acconto aggiornato');
+        close();
+        await loadAll();
+        render();
+      } catch (e) { toast(e.message, true); }
+    }
+    async function del(close) {
+      if (!confirm('Eliminare questo acconto di ' + fmt(settlement.amount) + '?')) return;
+      try {
+        await api('settlement_delete', { id: settlement.id });
+        toast('Acconto eliminato');
+        close();
+        await loadAll();
+        render();
+      } catch (e) { toast(e.message, true); }
+    }
+  });
+}
+
 // ============ MEMBER STATEMENT (estratto conto persona) ============
 function openMemberStatement(memberId) {
   const treasurerId = state.trip?.payer_member_id || 1;
@@ -1052,7 +1154,7 @@ function openMemberStatement(memberId) {
           ? mine.map(s => {
               const p = accontoBy(s.category);
               return `
-            <div class="expense-row">
+            <div class="expense-row" data-sid="${s.id}" style="cursor:pointer">
               <div class="expense-icon">${p.emoji}</div>
               <div class="expense-meta">
                 <div class="title">→ ${s.to_name}<span class="chip" style="margin-left:6px;font-size:10px">${p.name}</span></div>
@@ -1062,6 +1164,12 @@ function openMemberStatement(memberId) {
             </div>
           `;}).join('')
           : '<div class="muted" style="font-size:13px">Nessun acconto.</div>';
+        accList.querySelectorAll('[data-sid]').forEach(r => {
+          r.addEventListener('click', () => {
+            const s = mine.find(x => x.id === +r.dataset.sid);
+            if (s) { close(); openSettlementEdit(s); }
+          });
+        });
       });
       modal.querySelector('#addAccBtn')?.addEventListener('click', () => {
         close();

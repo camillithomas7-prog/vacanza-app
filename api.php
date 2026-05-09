@@ -233,10 +233,40 @@ try {
     }
 
     case 'settlement_delete': {
-      require_admin();
+      $me = require_member();
       $b = body();
-      $stmt = db()->prepare("DELETE FROM settlement WHERE id = ? AND trip_id = 1");
-      $stmt->execute([(int)($b['id'] ?? 0)]);
+      $id = (int)($b['id'] ?? 0);
+      $stmt = db()->prepare("SELECT * FROM settlement WHERE id = ? AND trip_id = 1");
+      $stmt->execute([$id]);
+      $s = $stmt->fetch();
+      if (!$s) json_response(['error' => 'not found'], 404);
+      if (!$me['is_admin'] && (int)$s['from_member_id'] !== (int)$me['id']) {
+        json_response(['error' => 'Solo chi ha registrato l\'acconto (o l\'admin) può eliminarlo'], 403);
+      }
+      $stmt = db()->prepare("DELETE FROM settlement WHERE id = ?");
+      $stmt->execute([$id]);
+      json_response(['ok' => true]);
+    }
+
+    case 'settlement_update': {
+      $me = require_member();
+      $b = body();
+      $id = (int)($b['id'] ?? 0);
+      $stmt = db()->prepare("SELECT * FROM settlement WHERE id = ? AND trip_id = 1");
+      $stmt->execute([$id]);
+      $s = $stmt->fetch();
+      if (!$s) json_response(['error' => 'not found'], 404);
+      if (!$me['is_admin'] && (int)$s['from_member_id'] !== (int)$me['id']) {
+        json_response(['error' => 'Solo chi ha registrato l\'acconto (o l\'admin) può modificarlo'], 403);
+      }
+      $fields = []; $vals = [];
+      if (array_key_exists('amount', $b))   { $fields[] = "amount = ?";   $vals[] = round((float)$b['amount'], 2); }
+      if (array_key_exists('category', $b)) { $fields[] = "category = ?"; $vals[] = $b['category']; }
+      if (array_key_exists('note', $b))     { $fields[] = "note = ?";     $vals[] = $b['note']; }
+      if (!$fields) json_response(['ok' => true]);
+      $vals[] = $id;
+      $stmt = db()->prepare("UPDATE settlement SET " . implode(', ', $fields) . " WHERE id = ?");
+      $stmt->execute($vals);
       json_response(['ok' => true]);
     }
 
