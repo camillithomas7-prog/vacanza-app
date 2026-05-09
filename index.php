@@ -1,3 +1,8 @@
+<?php
+$cssV = @filemtime(__DIR__ . '/assets/styles.css') ?: time();
+$jsV  = @filemtime(__DIR__ . '/assets/app.js')   ?: time();
+header('Cache-Control: no-cache, must-revalidate');
+?>
 <!DOCTYPE html>
 <html lang="it">
 <head>
@@ -7,7 +12,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="assets/styles.css" />
+  <link rel="stylesheet" href="assets/styles.css?v=<?= $cssV ?>" />
   <title>Vacanza</title>
 </head>
 <body>
@@ -52,6 +57,6 @@
     </div>
   </template>
 
-  <script src="assets/app.js"></script>
+  <script src="assets/app.js?v=<?= $jsV ?>"></script>
 </body>
 </html>
