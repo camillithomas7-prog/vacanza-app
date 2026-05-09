@@ -18,6 +18,8 @@ const CATS = [
   { id: 'noleggio',   name: 'Noleggio',   emoji: '🚗', mode: 'equal' },
   { id: 'carburante', name: 'Carburante', emoji: '⛽', mode: 'equal' },
   { id: 'escursione', name: 'Escursione', emoji: '🏔️', mode: 'equal' },
+  { id: 'padel',      name: 'Padel',      emoji: '🎾', mode: 'equal' },
+  { id: 'massaggi',   name: 'Massaggi',   emoji: '💆', mode: 'items' },
   { id: 'spiaggia',   name: 'Spiaggia',   emoji: '🏖️', mode: 'equal' },
   { id: 'biglietti',  name: 'Biglietti',  emoji: '🎟️', mode: 'equal' },
   { id: 'shopping',   name: 'Shopping',   emoji: '🛍️', mode: 'items' },
