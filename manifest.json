@@ -4,8 +4,8 @@
   "description": "Gestione spese di gruppo per la vacanza",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#0b1220",
-  "theme_color": "#0b1220",
+  "background_color": "#F8F2E7",
+  "theme_color": "#F8F2E7",
   "orientation": "portrait",
   "icons": [
     {

@@ -42,7 +42,17 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const fmt = (n) => '€' + Number(n || 0).toFixed(2).replace('.', ',');
 const initials = (name) => (name || '?').split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 const avatarColor = (id) => {
-  const palette = ['#4f8cff', '#ff5c7a', '#2ecc71', '#ffc857', '#b06bff', '#36d6e6', '#ff8a5b', '#f25fae'];
+  // Sun-baked palette per il tema "Italian Travel Journal"
+  const palette = [
+    '#C2502E', // terracotta
+    '#2C6E78', // lagoon
+    '#6B7A3F', // olive
+    '#C29550', // gold
+    '#A8576E', // dusty rose
+    '#4A6B7A', // slate blue
+    '#B07458', // clay
+    '#7A6BA0', // lavender stone
+  ];
   return palette[(id - 1) % palette.length];
 };
 function avatarHTML(member, size) {
