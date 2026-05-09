@@ -198,7 +198,8 @@ function viewHome() {
   const meSum = sum.members.find(x => x.id === state.me.id);
   const treasurerId = state.trip?.payer_member_id || 1;
   const isTreasurer = state.me.id === treasurerId;
-  const treasurer = sum.members.find(x => x.id === treasurerId) || { name: 'Tesoriere' };
+  const treasurerLookup = state.members.find(x => x.id === treasurerId);
+  const treasurer = sum.members.find(x => x.id === treasurerId) || { name: treasurerLookup?.name || 'Tesoriere' };
 
   if (isTreasurer) {
     // ===== TESORIERE: vede il dare/avere di tutti =====
@@ -212,22 +213,36 @@ function viewHome() {
       .filter(m => m.id !== state.me.id)
       .reduce((s, m) => s + Math.max(0, m.settled_paid - m.spent), 0);
 
-    const main = document.createElement('div');
-    main.className = 'card';
-    main.innerHTML = `
-      <h2>Cassa del gruppo</h2>
-      <div class="stat-grid">
-        <div class="stat"><div class="label">Hai anticipato</div><div class="value">${fmt(meSum.paid)}</div></div>
-        <div class="stat good"><div class="label">Acconti incassati</div><div class="value">${fmt(totalCollected)}</div></div>
+    // Hero: numero focale in cima
+    const hero = document.createElement('div');
+    hero.className = 'hero-card';
+    hero.innerHTML = `
+      <div class="hero-label">Da incassare</div>
+      <div class="hero-value">${fmt(totalToCollect)}</div>
+      <div class="hero-meta">
+        <div>
+          <div class="lbl">Anticipato</div>
+          <div class="v">${fmt(meSum.paid)}</div>
+        </div>
+        <div>
+          <div class="lbl">Incassato</div>
+          <div class="v">${fmt(totalCollected)}</div>
+        </div>
+        ${totalToReturn > 0.01 ? `
+        <div>
+          <div class="lbl">Da restituire</div>
+          <div class="v">${fmt(totalToReturn)}</div>
+        </div>` : ''}
       </div>
-      <div class="stat-grid" style="margin-top:8px">
-        <div class="stat ${totalToCollect > 0 ? 'bad' : ''}"><div class="label">Da incassare</div><div class="value">${fmt(totalToCollect)}</div></div>
-        ${totalToReturn > 0.01 ? `<div class="stat good"><div class="label">Da restituire</div><div class="value">${fmt(totalToReturn)}</div></div>` : `<div class="stat"><div class="label">Tua quota</div><div class="value">${fmt(meSum.spent)}</div></div>`}
-      </div>
-      <button class="btn primary full" id="addAccontoBtn" style="margin-top:14px">💰 Registra acconto ricevuto</button>
     `;
-    wrap.appendChild(main);
-    main.querySelector('#addAccontoBtn').addEventListener('click', () => openAcconto());
+    wrap.appendChild(hero);
+
+    const action = document.createElement('button');
+    action.className = 'btn primary full lg';
+    action.style.marginBottom = '14px';
+    action.innerHTML = '💰 Registra acconto ricevuto';
+    action.addEventListener('click', () => openAcconto());
+    wrap.appendChild(action);
 
     // Estratto conto per persona
     const others = sum.members.filter(m => m.id !== state.me.id);
@@ -264,28 +279,51 @@ function viewHome() {
     const overBudget = meSum.budget > 0 && dovuto > meSum.budget;
     const pct = meSum.budget > 0 ? Math.min(100, (dovuto / meSum.budget) * 100) : 0;
 
-    const main = document.createElement('div');
-    main.className = 'card';
-    const stateLine = residuo > 0.01
-      ? `<div class="stat bad"><div class="label">Devi ancora a ${treasurer.name}</div><div class="value">${fmt(residuo)}</div></div>`
+    // Hero: numero focale
+    const heroLabel = residuo > 0.01
+      ? `Devi a ${treasurer.name}`
       : residuo < -0.01
-        ? `<div class="stat good"><div class="label">${treasurer.name} ti deve</div><div class="value">${fmt(-residuo)}</div></div>`
-        : `<div class="stat good"><div class="label">Saldo</div><div class="value">in pari ✓</div></div>`;
-    main.innerHTML = `
-      <h2>Il tuo conto con ${treasurer.name}</h2>
-      <div class="stat-grid">
-        <div class="stat"><div class="label">Tue quote</div><div class="value">${fmt(dovuto)}</div></div>
-        <div class="stat"><div class="label">Hai versato</div><div class="value">${fmt(versato)}</div></div>
+        ? `${treasurer.name} ti deve`
+        : 'Saldo';
+    const heroValue = Math.abs(residuo) < 0.01 ? 'in pari ✓' : fmt(Math.abs(residuo));
+
+    const hero = document.createElement('div');
+    hero.className = 'hero-card';
+    hero.innerHTML = `
+      <div class="hero-label">${heroLabel}</div>
+      <div class="hero-value">${heroValue}</div>
+      <div class="hero-meta">
+        <div>
+          <div class="lbl">Tue quote</div>
+          <div class="v">${fmt(dovuto)}</div>
+        </div>
+        <div>
+          <div class="lbl">Hai versato</div>
+          <div class="v">${fmt(versato)}</div>
+        </div>
       </div>
-      <div style="margin-top:10px">${stateLine}</div>
-      ${meSum.budget > 0 ? `
-        <div class="budget-bar ${overBudget ? 'over' : ''}" style="margin-top:14px"><div style="width:${pct}%"></div></div>
-        <div class="row between"><span class="muted" style="font-size:12px">Budget ${fmt(meSum.budget)}</span><span class="muted" style="font-size:12px">${pct.toFixed(0)}%</span></div>
-      ` : `<button class="btn ghost full" id="setBudgetBtn" style="margin-top:14px">Imposta il tuo budget</button>`}
     `;
-    wrap.appendChild(main);
-    if (!meSum.budget) {
-      main.querySelector('#setBudgetBtn').addEventListener('click', () => openMyBudget());
+    wrap.appendChild(hero);
+
+    if (meSum.budget > 0) {
+      const budgetCard = document.createElement('div');
+      budgetCard.className = 'card';
+      budgetCard.innerHTML = `
+        <h2>Budget personale</h2>
+        <div class="row between" style="align-items:baseline">
+          <div style="font-size:24px;font-weight:600;letter-spacing:-0.025em">${fmt(meSum.budget_remaining)}</div>
+          <div class="muted" style="font-size:12px">di ${fmt(meSum.budget)} · ${pct.toFixed(0)}% usato</div>
+        </div>
+        <div class="budget-bar ${overBudget ? 'over' : ''}" style="margin-top:12px"><div style="width:${pct}%"></div></div>
+      `;
+      wrap.appendChild(budgetCard);
+    } else {
+      const btn = document.createElement('button');
+      btn.className = 'btn ghost full';
+      btn.textContent = 'Imposta il tuo budget';
+      btn.style.marginBottom = '14px';
+      btn.addEventListener('click', () => openMyBudget());
+      wrap.appendChild(btn);
     }
   }
 
@@ -459,25 +497,37 @@ function viewSettle() {
     const versato = meSum.settled_paid;
     const residuo = +(dovuto - versato).toFixed(2);
 
-    const head = document.createElement('div');
-    head.className = 'card';
-    head.innerHTML = `
-      <h2>Il tuo saldo verso ${escapeHtml(treasurerName)}</h2>
-      <div class="stat-grid">
-        <div class="stat"><div class="label">Tue quote</div><div class="value">${fmt(dovuto)}</div></div>
-        <div class="stat"><div class="label">Hai versato</div><div class="value">${fmt(versato)}</div></div>
+    const heroLabel = residuo > 0.01
+      ? `Devi a ${treasurerName}`
+      : residuo < -0.01
+        ? `${treasurerName} ti deve`
+        : 'Saldo';
+    const heroValue = Math.abs(residuo) < 0.01 ? 'in pari ✓' : fmt(Math.abs(residuo));
+
+    const hero = document.createElement('div');
+    hero.className = 'hero-card';
+    hero.innerHTML = `
+      <div class="hero-label">${heroLabel}</div>
+      <div class="hero-value">${heroValue}</div>
+      <div class="hero-meta">
+        <div>
+          <div class="lbl">Tue quote</div>
+          <div class="v">${fmt(dovuto)}</div>
+        </div>
+        <div>
+          <div class="lbl">Versato</div>
+          <div class="v">${fmt(versato)}</div>
+        </div>
       </div>
-      <div style="margin-top:12px">
-        ${residuo > 0.01
-          ? `<div class="stat bad"><div class="label">Devi ancora</div><div class="value">${fmt(residuo)}</div></div>`
-          : residuo < -0.01
-            ? `<div class="stat good"><div class="label">${escapeHtml(treasurerName)} ti deve</div><div class="value">${fmt(-residuo)}</div></div>`
-            : `<div class="stat good"><div class="label">Saldo</div><div class="value">in pari ✓</div></div>`}
-      </div>
-      <button class="btn primary full" id="addAcconto" style="margin-top:14px">💰 + Registra un mio acconto</button>
     `;
-    head.querySelector('#addAcconto').addEventListener('click', () => openAcconto());
-    wrap.appendChild(head);
+    wrap.appendChild(hero);
+
+    const action = document.createElement('button');
+    action.className = 'btn accent full lg';
+    action.style.marginBottom = '14px';
+    action.textContent = '+ Registra un acconto';
+    action.addEventListener('click', () => openAcconto());
+    wrap.appendChild(action);
 
     const histCard = document.createElement('div');
     histCard.className = 'card';
