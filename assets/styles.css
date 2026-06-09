@@ -333,22 +333,34 @@ h1, h2, h3, h4 {
 
 .tabbar button.fab-tab {
   flex: 0 0 auto;
-  background: var(--text);
-  color: white;
-  margin: -18px 6px 0;
-  width: 52px;
-  height: 52px;
+  padding: 0;
+  gap: 0;
+  margin: -22px 8px 0;
+  width: 56px;
+  height: 56px;
   align-self: center;
+  justify-content: center;
   border-radius: 50%;
+  color: #fff;
+  background: linear-gradient(140deg, #14B8A6 0%, var(--accent) 55%, var(--accent-hover) 100%);
+  border: 3px solid var(--surface);
   box-shadow:
-    0 10px 20px -6px rgba(12, 10, 9, 0.35),
-    0 2px 4px rgba(12, 10, 9, 0.1);
-  transition: all .15s ease;
+    0 12px 24px -6px rgba(15, 118, 110, 0.55),
+    0 3px 8px rgba(12, 10, 9, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
 }
-.tabbar button.fab-tab:hover { background: #1C1917; transform: translateY(-1px); }
-.tabbar button.fab-tab:active { transform: scale(0.95); }
-.tabbar button.fab-tab svg { width: 24px; height: 24px; }
-.tabbar button.fab-tab.active { background: var(--text); color: white; }
+.tabbar button.fab-tab:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(140deg, #0FA89A 0%, var(--accent-hover) 60%, #0B514C 100%);
+  box-shadow:
+    0 16px 30px -6px rgba(15, 118, 110, 0.6),
+    0 4px 10px rgba(12, 10, 9, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.tabbar button.fab-tab:active { transform: scale(0.93); }
+.tabbar button.fab-tab svg { width: 26px; height: 26px; }
+.tabbar button.fab-tab.active { color: #fff; }
 
 /* ============================================================
    CARDS
