@@ -758,18 +758,32 @@ try {
     }
 
     case 'dining_session_close': {
-      require_admin();
+      $me = require_member();
       $b = body();
       $id = (int)($b['id'] ?? 0);
+      $sess = db()->prepare("SELECT * FROM dining_session WHERE id = ? AND trip_id = 1");
+      $sess->execute([$id]);
+      $session = $sess->fetch();
+      if (!$session) json_response(['error' => 'not found'], 404);
+      if (!$me['is_admin'] && (int)$session['created_by_member_id'] !== (int)$me['id']) {
+        json_response(['error' => 'Solo chi ha creato la tavolata (o l\'admin) può chiuderla'], 403);
+      }
       $status = ($b['reopen'] ?? false) ? 'open' : 'closed';
       db()->prepare("UPDATE dining_session SET status = ? WHERE id = ? AND trip_id = 1")->execute([$status, $id]);
       json_response(['ok' => true, 'status' => $status]);
     }
 
     case 'dining_session_delete': {
-      require_admin();
+      $me = require_member();
       $b = body();
       $id = (int)($b['id'] ?? 0);
+      $sess = db()->prepare("SELECT * FROM dining_session WHERE id = ? AND trip_id = 1");
+      $sess->execute([$id]);
+      $session = $sess->fetch();
+      if (!$session) json_response(['error' => 'not found'], 404);
+      if (!$me['is_admin'] && (int)$session['created_by_member_id'] !== (int)$me['id']) {
+        json_response(['error' => 'Solo chi ha creato la tavolata (o l\'admin) può eliminarla'], 403);
+      }
       $pdo = db();
       $pdo->prepare("DELETE FROM dining_paid WHERE session_id = ?")->execute([$id]);
       $pdo->prepare("DELETE FROM dining_order WHERE session_id = ?")->execute([$id]);

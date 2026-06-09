@@ -1651,7 +1651,8 @@ async function renderDiningSession(wrap, id) {
     catch (e) { toast(e.message, true); }
   }));
 
-  if (isTreas) {
+  const canManage = isTreas || (+s.created_by_member_id === meId);
+  if (canManage) {
     const actions = document.createElement('div');
     actions.className = 'row gap';
     actions.style.marginTop = '4px';
