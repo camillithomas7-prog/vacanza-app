@@ -503,6 +503,280 @@ try {
       ]);
     }
 
+    // ---------------- RISTORANTI ----------------
+    case 'restaurants': {
+      require_member();
+      $rows = db()->query("SELECT * FROM restaurant WHERE trip_id = 1 AND active = 1 ORDER BY id")->fetchAll();
+      json_response(['restaurants' => $rows]);
+    }
+
+    case 'restaurant_menu': {
+      require_member();
+      $rid = (int)($_GET['restaurant_id'] ?? 0);
+      $r = db()->prepare("SELECT * FROM restaurant WHERE id = ?");
+      $r->execute([$rid]);
+      $rest = $r->fetch();
+      if (!$rest) json_response(['error' => 'Ristorante non trovato'], 404);
+      $stmt = db()->prepare("SELECT * FROM menu_item WHERE restaurant_id = ? AND active = 1 ORDER BY sort, id");
+      $stmt->execute([$rid]);
+      json_response(['restaurant' => $rest, 'items' => $stmt->fetchAll()]);
+    }
+
+    case 'restaurant_save': {
+      require_admin();
+      $b = body();
+      $id = (int)($b['id'] ?? 0);
+      if ($id) {
+        $stmt = db()->prepare("UPDATE restaurant SET name = ?, currency = ?, emoji = ?, note = ? WHERE id = ?");
+        $stmt->execute([$b['name'] ?? 'Ristorante', $b['currency'] ?? 'L.E', $b['emoji'] ?? '🍝', $b['note'] ?? null, $id]);
+        json_response(['id' => $id]);
+      } else {
+        $stmt = db()->prepare("INSERT INTO restaurant (trip_id, name, currency, emoji, note, active) VALUES (1, ?, ?, ?, ?, 1)");
+        $stmt->execute([$b['name'] ?? 'Ristorante', $b['currency'] ?? 'L.E', $b['emoji'] ?? '🍝', $b['note'] ?? null]);
+        json_response(['id' => db()->lastInsertId()]);
+      }
+    }
+
+    case 'restaurant_delete': {
+      require_admin();
+      $b = body();
+      $stmt = db()->prepare("UPDATE restaurant SET active = 0 WHERE id = ?");
+      $stmt->execute([(int)($b['id'] ?? 0)]);
+      json_response(['ok' => true]);
+    }
+
+    case 'menu_item_save': {
+      require_admin();
+      $b = body();
+      $id = (int)($b['id'] ?? 0);
+      $price = round((float)($b['price'] ?? 0), 2);
+      if ($id) {
+        $stmt = db()->prepare("UPDATE menu_item SET section = ?, name = ?, description = ?, price = ? WHERE id = ?");
+        $stmt->execute([$b['section'] ?? 'Menù', $b['name'] ?? '', $b['description'] ?? null, $price, $id]);
+        json_response(['id' => $id]);
+      } else {
+        $rid = (int)($b['restaurant_id'] ?? 0);
+        $maxSort = (int)(db()->query("SELECT COALESCE(MAX(sort),0) AS m FROM menu_item WHERE restaurant_id = " . $rid)->fetch()['m']);
+        $stmt = db()->prepare("INSERT INTO menu_item (restaurant_id, section, name, description, price, sort, active) VALUES (?, ?, ?, ?, ?, ?, 1)");
+        $stmt->execute([$rid, $b['section'] ?? 'Menù', $b['name'] ?? '', $b['description'] ?? null, $price, $maxSort + 1]);
+        json_response(['id' => db()->lastInsertId()]);
+      }
+    }
+
+    case 'menu_item_delete': {
+      require_admin();
+      $b = body();
+      $stmt = db()->prepare("UPDATE menu_item SET active = 0 WHERE id = ?");
+      $stmt->execute([(int)($b['id'] ?? 0)]);
+      json_response(['ok' => true]);
+    }
+
+    // ---------------- TAVOLATE (dining sessions) ----------------
+    case 'dining_sessions': {
+      require_member();
+      $rows = db()->query("
+        SELECT ds.*, r.name AS restaurant_name, r.currency, r.emoji
+        FROM dining_session ds JOIN restaurant r ON r.id = ds.restaurant_id
+        WHERE ds.trip_id = 1
+        ORDER BY (ds.status = 'open') DESC, ds.id DESC
+      ")->fetchAll();
+      // totale per ogni tavolata
+      $tot = db()->prepare("SELECT COALESCE(SUM(unit_price * qty),0) AS t FROM dining_order WHERE session_id = ?");
+      $cnt = db()->prepare("SELECT COUNT(DISTINCT member_id) AS n FROM dining_order WHERE session_id = ?");
+      foreach ($rows as &$s) {
+        $tot->execute([$s['id']]); $s['grand_total'] = (float)$tot->fetch()['t'];
+        $cnt->execute([$s['id']]); $s['people'] = (int)$cnt->fetch()['n'];
+      }
+      unset($s);
+      json_response(['sessions' => $rows]);
+    }
+
+    case 'dining_session_create': {
+      $me = require_member();
+      $b = body();
+      $rid = (int)($b['restaurant_id'] ?? 0);
+      if (!$rid) json_response(['error' => 'Scegli un ristorante'], 400);
+      $stmt = db()->prepare("INSERT INTO dining_session (trip_id, restaurant_id, title, dined_on, status, created_by_member_id) VALUES (1, ?, ?, ?, 'open', ?)");
+      $stmt->execute([$rid, $b['title'] ?? null, $b['dined_on'] ?? null, $me['id']]);
+      json_response(['id' => db()->lastInsertId()]);
+    }
+
+    case 'dining_session_get': {
+      $me = require_member();
+      $id = (int)($_GET['id'] ?? 0);
+      $stmt = db()->prepare("
+        SELECT ds.*, r.name AS restaurant_name, r.currency, r.emoji, r.note AS restaurant_note
+        FROM dining_session ds JOIN restaurant r ON r.id = ds.restaurant_id
+        WHERE ds.id = ? AND ds.trip_id = 1
+      ");
+      $stmt->execute([$id]);
+      $session = $stmt->fetch();
+      if (!$session) json_response(['error' => 'Tavolata non trovata'], 404);
+
+      $ordStmt = db()->prepare("
+        SELECT o.*, m.name AS member_name
+        FROM dining_order o JOIN member m ON m.id = o.member_id
+        WHERE o.session_id = ? ORDER BY o.member_id, o.id
+      ");
+      $ordStmt->execute([$id]);
+      $orders = $ordStmt->fetchAll();
+
+      $paidStmt = db()->prepare("SELECT member_id, amount FROM dining_paid WHERE session_id = ?");
+      $paidStmt->execute([$id]);
+      $paidMap = [];
+      foreach ($paidStmt->fetchAll() as $p) $paidMap[(int)$p['member_id']] = (float)$p['amount'];
+
+      // raggruppa per membro
+      $byMember = [];
+      foreach ($orders as $o) {
+        $mid = (int)$o['member_id'];
+        if (!isset($byMember[$mid])) {
+          $byMember[$mid] = ['member_id' => $mid, 'name' => $o['member_name'], 'items' => [], 'total' => 0];
+        }
+        $line = (float)$o['unit_price'] * (int)$o['qty'];
+        $byMember[$mid]['items'][] = [
+          'id' => (int)$o['id'], 'name' => $o['name'], 'menu_item_id' => $o['menu_item_id'] ? (int)$o['menu_item_id'] : null,
+          'unit_price' => (float)$o['unit_price'], 'qty' => (int)$o['qty'], 'line_total' => $line,
+        ];
+        $byMember[$mid]['total'] += $line;
+      }
+      foreach ($byMember as &$mm) {
+        $mm['paid'] = isset($paidMap[$mm['member_id']]);
+        $mm['paid_amount'] = $paidMap[$mm['member_id']] ?? 0;
+      }
+      unset($mm);
+
+      $grand = 0; $collected = 0;
+      foreach ($byMember as $mm) { $grand += $mm['total']; if ($mm['paid']) $collected += $mm['total']; }
+
+      json_response([
+        'session' => $session,
+        'members' => array_values($byMember),
+        'grand_total' => round($grand, 2),
+        'collected' => round($collected, 2),
+        'me_id' => (int)$me['id'],
+        'treasurer_id' => (int)(db()->query("SELECT payer_member_id FROM trip WHERE id = 1")->fetch()['payer_member_id'] ?? 1),
+      ]);
+    }
+
+    case 'dining_order_add': {
+      $me = require_member();
+      $b = body();
+      $sid = (int)($b['session_id'] ?? 0);
+      $targetId = (int)($b['member_id'] ?? $me['id']);
+      // Non-admin può aggiungere solo per sé stesso
+      if ($targetId !== (int)$me['id'] && !$me['is_admin']) json_response(['error' => 'Puoi aggiungere solo i tuoi piatti'], 403);
+
+      $sess = db()->prepare("SELECT * FROM dining_session WHERE id = ? AND trip_id = 1");
+      $sess->execute([$sid]);
+      $session = $sess->fetch();
+      if (!$session) json_response(['error' => 'Tavolata non trovata'], 404);
+      if ($session['status'] !== 'open') json_response(['error' => 'Tavolata già chiusa'], 400);
+
+      $items = $b['items'] ?? [];
+      if (!$items) json_response(['error' => 'Nessun piatto selezionato'], 400);
+
+      $pdo = db();
+      $pdo->beginTransaction();
+      try {
+        foreach ($items as $it) {
+          $qty = max(1, (int)($it['qty'] ?? 1));
+          if (!empty($it['menu_item_id'])) {
+            $mi = $pdo->prepare("SELECT * FROM menu_item WHERE id = ?");
+            $mi->execute([(int)$it['menu_item_id']]);
+            $mItem = $mi->fetch();
+            if (!$mItem) continue;
+            // merge: se già presente la stessa voce per questo membro, incrementa qty
+            $ex = $pdo->prepare("SELECT id, qty FROM dining_order WHERE session_id = ? AND member_id = ? AND menu_item_id = ?");
+            $ex->execute([$sid, $targetId, (int)$it['menu_item_id']]);
+            $row = $ex->fetch();
+            if ($row) {
+              $up = $pdo->prepare("UPDATE dining_order SET qty = qty + ? WHERE id = ?");
+              $up->execute([$qty, $row['id']]);
+            } else {
+              $ins = $pdo->prepare("INSERT INTO dining_order (session_id, member_id, menu_item_id, name, unit_price, qty) VALUES (?, ?, ?, ?, ?, ?)");
+              $ins->execute([$sid, $targetId, (int)$it['menu_item_id'], $mItem['name'], (float)$mItem['price'], $qty]);
+            }
+          } else {
+            // voce libera (fuori menù)
+            $name = trim($it['name'] ?? '');
+            $price = round((float)($it['price'] ?? 0), 2);
+            if ($name === '') continue;
+            $ins = $pdo->prepare("INSERT INTO dining_order (session_id, member_id, menu_item_id, name, unit_price, qty) VALUES (?, ?, NULL, ?, ?, ?)");
+            $ins->execute([$sid, $targetId, $name, $price, $qty]);
+          }
+        }
+        $pdo->commit();
+        json_response(['ok' => true]);
+      } catch (Throwable $e) {
+        $pdo->rollBack();
+        json_response(['error' => $e->getMessage()], 400);
+      }
+    }
+
+    case 'dining_order_remove': {
+      $me = require_member();
+      $b = body();
+      $oid = (int)($b['id'] ?? 0);
+      $stmt = db()->prepare("SELECT o.*, ds.status FROM dining_order o JOIN dining_session ds ON ds.id = o.session_id WHERE o.id = ?");
+      $stmt->execute([$oid]);
+      $o = $stmt->fetch();
+      if (!$o) json_response(['error' => 'not found'], 404);
+      if ((int)$o['member_id'] !== (int)$me['id'] && !$me['is_admin']) json_response(['error' => 'Puoi togliere solo i tuoi piatti'], 403);
+      if ($o['status'] !== 'open') json_response(['error' => 'Tavolata chiusa'], 400);
+      // diminuisci qty o elimina
+      if ((int)$o['qty'] > 1) {
+        db()->prepare("UPDATE dining_order SET qty = qty - 1 WHERE id = ?")->execute([$oid]);
+      } else {
+        db()->prepare("DELETE FROM dining_order WHERE id = ?")->execute([$oid]);
+      }
+      json_response(['ok' => true]);
+    }
+
+    case 'dining_paid_toggle': {
+      $me = require_member();
+      $b = body();
+      $sid = (int)($b['session_id'] ?? 0);
+      $mid = (int)($b['member_id'] ?? $me['id']);
+      $treasurerId = (int)(db()->query("SELECT payer_member_id FROM trip WHERE id = 1")->fetch()['payer_member_id'] ?? 1);
+      // Può segnare: sé stesso, oppure il tesoriere/admin per chiunque
+      if ($mid !== (int)$me['id'] && !$me['is_admin'] && (int)$me['id'] !== $treasurerId) {
+        json_response(['error' => 'Non puoi modificare il pagamento altrui'], 403);
+      }
+      $ex = db()->prepare("SELECT 1 FROM dining_paid WHERE session_id = ? AND member_id = ?");
+      $ex->execute([$sid, $mid]);
+      if ($ex->fetch()) {
+        db()->prepare("DELETE FROM dining_paid WHERE session_id = ? AND member_id = ?")->execute([$sid, $mid]);
+        json_response(['paid' => false]);
+      } else {
+        $t = db()->prepare("SELECT COALESCE(SUM(unit_price * qty),0) AS t FROM dining_order WHERE session_id = ? AND member_id = ?");
+        $t->execute([$sid, $mid]);
+        $amt = (float)$t->fetch()['t'];
+        db()->prepare("INSERT INTO dining_paid (session_id, member_id, amount) VALUES (?, ?, ?)")->execute([$sid, $mid, $amt]);
+        json_response(['paid' => true]);
+      }
+    }
+
+    case 'dining_session_close': {
+      require_admin();
+      $b = body();
+      $id = (int)($b['id'] ?? 0);
+      $status = ($b['reopen'] ?? false) ? 'open' : 'closed';
+      db()->prepare("UPDATE dining_session SET status = ? WHERE id = ? AND trip_id = 1")->execute([$status, $id]);
+      json_response(['ok' => true, 'status' => $status]);
+    }
+
+    case 'dining_session_delete': {
+      require_admin();
+      $b = body();
+      $id = (int)($b['id'] ?? 0);
+      $pdo = db();
+      $pdo->prepare("DELETE FROM dining_paid WHERE session_id = ?")->execute([$id]);
+      $pdo->prepare("DELETE FROM dining_order WHERE session_id = ?")->execute([$id]);
+      $pdo->prepare("DELETE FROM dining_session WHERE id = ? AND trip_id = 1")->execute([$id]);
+      json_response(['ok' => true]);
+    }
+
     default:
       json_response(['error' => 'Azione sconosciuta: ' . $action], 404);
   }

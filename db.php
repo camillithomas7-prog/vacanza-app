@@ -56,6 +56,117 @@ function migrate($pdo) {
   if (!has_column($pdo, 'settlement', 'category')) {
     $pdo->exec("ALTER TABLE settlement ADD COLUMN category " . (driver_name($pdo) === 'mysql' ? 'VARCHAR(50)' : 'TEXT'));
   }
+  // Seed iniziale ristoranti (Tre Fratelli) se non presenti — idempotente, gira anche su DB già esistenti
+  seed_restaurants($pdo);
+}
+
+// ============ RISTORANTI: menù Tre Fratelli (prezzi in L.E) ============
+function tre_fratelli_menu() {
+  return [
+    'Antipasti' => [
+      ['Bruschetta al Pomodoro (3 pezzi)', 90, null],
+      ['Cocktail di Gamberetti', 220, null],
+      ['Bresaola Rucola e Grana', 250, null],
+      ['Carpaccio di Manzo Rucola e Grana', 220, null],
+      ['Vongole al Pomodoro', 270, null],
+      ['Carpaccio di Salmone', 300, null],
+      ['Antipasto 3 Fratelli', 150, 'Bruschetta al salmone, con mozzarella di bufala, alla bresaola'],
+    ],
+    'Zuppe' => [
+      ['Zuppa di Frutti di Mare', 300, null],
+      ['Zuppa di Pomodoro', 100, null],
+      ['Zuppa di Pollo', 150, null],
+    ],
+    'Insalate' => [
+      ['Insalata Mista', 100, 'Lattuga, pomodoro, rucola, cetrioli'],
+      ['Insalata Greca', 150, 'Lattuga, pomodoro, rucola, cetrioli'],
+      ['Mozzarella di Bufala', 200, 'Mozzarella di bufala, pomodoro'],
+      ['Insalata di Tonno', 185, null],
+      ['Insalata Frutti di Mare', 300, 'Cappuccia, frutti di mare'],
+      ['Insalata 3 Fratelli', 200, 'Lattuga, mais, uovo, tonno, mozzarella di bufala'],
+    ],
+    'Pizza' => [
+      ['Pizza Stria Rosmarino', 140, null],
+      ['Pizza Margherita', 225, null],
+      ['Pizza Buffala', 310, null],
+      ['Pizza Napoli', 275, 'Pomodoro, formaggio, acciughe'],
+      ['Pizza Romana', 280, 'Pomodoro, formaggio, acciughe, capperi'],
+      ['Pizza Vegetariana', 265, null],
+      ['Pizza Quattro Formaggi', 300, null],
+      ['Pizza Quattro Stagioni', 300, 'Verdure, salame, olive, funghi'],
+      ['Pizza Tonno e Cipolle', 300, null],
+      ['Pizza Frutti di Mare', 330, null],
+      ['Pizza Bresaola Rucola e Grana', 330, null],
+      ['Calzone Bolognese', 300, null],
+      ['Pizza Bolognese', 300, null],
+      ['Pizza Wurstel', 300, null],
+      ['Pizza Salame', 300, null],
+      ['Pizza Pollo', 310, null],
+      ['Pizza Funghi', 300, null],
+      ['Pizza Gamberi', 330, null],
+    ],
+    'Pasta' => [
+      ['Spaghetti al Pomodoro', 180, null],
+      ['Spaghetti Bolognese', 250, null],
+      ['Spaghetti ai Frutti di Mare', 330, 'Al pomodoro o aglio e olio'],
+      ['Spaghetti alle Vongole', 330, null],
+      ['Spaghetti al Granchio', 330, null],
+      ["Penne all'Arrabbiata", 180, null],
+      ['Penne al Salmone', 330, null],
+      ['Penne al Tonno', 265, null],
+      ['Penne Pollo e Funghi', 200, null],
+      ['Tagliatelle Panna e Gamberi', 330, null],
+      ['Tagliatelle al Pesto', 250, null],
+      ['Ravioli Burro e Parmigiano', 300, null],
+      ['Ravioli Crema di Pomodoro', 300, null],
+      ['Ravioli Crema di Funghi', 330, null],
+      ['Gnocchi al Gorgonzola', 300, null],
+      ['Gnocchi Gamberetti e Zucchine', 340, null],
+      ['Lasagne alla Bolognese', 270, null],
+    ],
+    'Secondi - Carne' => [
+      ['Filetto di Manzo alla Griglia', 480, 'Con contorno a scelta'],
+      ['Filetto di Manzo (salsa)', 520, 'Salsa ai funghi, al pepe o ai formaggi · con contorno'],
+      ['Tagliata di Manzo con Rucola e Grana', 480, 'Con contorno a scelta'],
+      ['Tagliata di Manzo con Gorgonzola', 520, 'Con contorno a scelta'],
+      ["Costolette d'Agnello alla Griglia", 600, 'Con contorno a scelta'],
+      ['Straccetti di Manzo', 360, 'Balsamico, rucola e parmigiano · con contorno'],
+      ['Straccetti di Pollo', 300, 'Balsamico, rucola e parmigiano · con contorno'],
+      ['Cotoletta alla Milanese', 400, 'Con contorno a scelta'],
+      ['Cotoletta di Pollo', 320, 'Con contorno a scelta'],
+      ['Pollo alla Griglia', 300, 'Con contorno a scelta'],
+      ['Pollo ai Funghi', 340, 'Con contorno a scelta'],
+      ['Pollo al Limone', 330, 'Con contorno a scelta'],
+    ],
+    'Secondi - Pesce' => [
+      ['Filetto di Pesce Fritto', 380, 'Con contorno a scelta'],
+      ['Gamberi al Limone', 480, 'Con contorno a scelta'],
+      ['Gamberi (Fritti o alla Griglia)', 480, 'Con contorno a scelta'],
+      ['Calamari (Fritti o alla Griglia)', 400, 'Con contorno a scelta'],
+      ['Misto di Pesce (Fritto o alla Griglia)', 520, 'Con contorno a scelta'],
+    ],
+  ];
+}
+
+function seed_restaurants($pdo) {
+  $n = (int)$pdo->query("SELECT COUNT(*) AS n FROM restaurant")->fetch()['n'];
+  if ($n > 0) return;
+  $pdo->beginTransaction();
+  try {
+    $stmt = $pdo->prepare("INSERT INTO restaurant (trip_id, name, currency, emoji, note, active) VALUES (1, ?, 'L.E', '🍝', ?, 1)");
+    $stmt->execute(['Tre Fratelli', 'Menù italiano · tutti i secondi sono serviti con un contorno a scelta (patatine fritte, patate al forno o verdure grigliate)']);
+    $rid = (int)$pdo->lastInsertId();
+    $itemStmt = $pdo->prepare("INSERT INTO menu_item (restaurant_id, section, name, description, price, sort, active) VALUES (?, ?, ?, ?, ?, ?, 1)");
+    $sort = 0;
+    foreach (tre_fratelli_menu() as $section => $items) {
+      foreach ($items as $it) {
+        $itemStmt->execute([$rid, $section, $it[0], $it[2], $it[1], $sort++]);
+      }
+    }
+    $pdo->commit();
+  } catch (Throwable $e) {
+    $pdo->rollBack();
+  }
 }
 
 function create_schema_sqlite($pdo) {
@@ -120,6 +231,60 @@ function create_schema_sqlite($pdo) {
     CREATE INDEX IF NOT EXISTS idx_share_expense ON expense_share(expense_id);
     CREATE INDEX IF NOT EXISTS idx_share_member ON expense_share(member_id);
     CREATE INDEX IF NOT EXISTS idx_member_trip ON member(trip_id);
+
+    CREATE TABLE IF NOT EXISTS restaurant (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trip_id INTEGER NOT NULL DEFAULT 1,
+      name TEXT NOT NULL,
+      currency TEXT DEFAULT 'L.E',
+      emoji TEXT DEFAULT '🍝',
+      note TEXT,
+      active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS menu_item (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      restaurant_id INTEGER NOT NULL,
+      section TEXT NOT NULL DEFAULT 'Menù',
+      name TEXT NOT NULL,
+      description TEXT,
+      price REAL NOT NULL DEFAULT 0,
+      sort INTEGER DEFAULT 0,
+      active INTEGER DEFAULT 1,
+      FOREIGN KEY (restaurant_id) REFERENCES restaurant(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS dining_session (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trip_id INTEGER NOT NULL DEFAULT 1,
+      restaurant_id INTEGER NOT NULL,
+      title TEXT,
+      dined_on TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_by_member_id INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (restaurant_id) REFERENCES restaurant(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS dining_order (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL,
+      member_id INTEGER NOT NULL,
+      menu_item_id INTEGER,
+      name TEXT NOT NULL,
+      unit_price REAL NOT NULL DEFAULT 0,
+      qty INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (session_id) REFERENCES dining_session(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS dining_paid (
+      session_id INTEGER NOT NULL,
+      member_id INTEGER NOT NULL,
+      amount REAL NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (session_id, member_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_menu_restaurant ON menu_item(restaurant_id);
+    CREATE INDEX IF NOT EXISTS idx_dsession_trip ON dining_session(trip_id);
+    CREATE INDEX IF NOT EXISTS idx_dorder_session ON dining_order(session_id);
   ");
 }
 
@@ -192,6 +357,69 @@ function create_schema_mysql($pdo) {
       note TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (trip_id) REFERENCES trip(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  ");
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS restaurant (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      trip_id INT NOT NULL DEFAULT 1,
+      name VARCHAR(255) NOT NULL,
+      currency VARCHAR(10) DEFAULT 'L.E',
+      emoji VARCHAR(16) DEFAULT '🍝',
+      note TEXT,
+      active TINYINT(1) DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  ");
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS menu_item (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      restaurant_id INT NOT NULL,
+      section VARCHAR(100) NOT NULL DEFAULT 'Menù',
+      name VARCHAR(255) NOT NULL,
+      description TEXT,
+      price DECIMAL(10,2) NOT NULL DEFAULT 0,
+      sort INT DEFAULT 0,
+      active TINYINT(1) DEFAULT 1,
+      INDEX idx_menu_restaurant (restaurant_id),
+      FOREIGN KEY (restaurant_id) REFERENCES restaurant(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  ");
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS dining_session (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      trip_id INT NOT NULL DEFAULT 1,
+      restaurant_id INT NOT NULL,
+      title VARCHAR(255),
+      dined_on DATE,
+      status VARCHAR(20) NOT NULL DEFAULT 'open',
+      created_by_member_id INT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_dsession_trip (trip_id),
+      FOREIGN KEY (restaurant_id) REFERENCES restaurant(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  ");
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS dining_order (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      session_id INT NOT NULL,
+      member_id INT NOT NULL,
+      menu_item_id INT,
+      name VARCHAR(255) NOT NULL,
+      unit_price DECIMAL(10,2) NOT NULL DEFAULT 0,
+      qty INT NOT NULL DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_dorder_session (session_id),
+      FOREIGN KEY (session_id) REFERENCES dining_session(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  ");
+  $pdo->exec("
+    CREATE TABLE IF NOT EXISTS dining_paid (
+      session_id INT NOT NULL,
+      member_id INT NOT NULL,
+      amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (session_id, member_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   ");
 }

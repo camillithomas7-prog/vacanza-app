@@ -6,6 +6,7 @@ const state = {
   expenses: [],
   summary: null,
   route: 'home',
+  diningSessionId: null, // tavolata aperta nel dettaglio
 };
 
 const CATS = [
@@ -40,6 +41,13 @@ async function api(action, body) {
 // ============ UTILS ============
 const $ = (sel, root = document) => root.querySelector(sel);
 const fmt = (n) => '€' + Number(n || 0).toFixed(2).replace('.', ',');
+// Valuta ristoranti (es. L.E = lire egiziane, importi interi col separatore migliaia)
+function fmtCur(n, cur) {
+  cur = cur || 'EUR';
+  if (cur === 'EUR' || cur === '€') return fmt(n);
+  const v = Math.round(Number(n || 0));
+  return v.toLocaleString('it-IT') + ' ' + cur;
+}
 const initials = (name) => (name || '?').split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 const avatarColor = (id) => {
   // Sun-baked palette per il tema "Italian Travel Journal"
@@ -171,7 +179,7 @@ function renderShell() {
     b.addEventListener('click', () => {
       const r = b.dataset.route;
       if (r === 'new') openNewExpense();
-      else go(r);
+      else { if (r === 'dining') state.diningSessionId = null; go(r); }
     });
   });
   render();
@@ -185,6 +193,7 @@ function render() {
   screen.innerHTML = '';
   if (state.route === 'home') screen.appendChild(viewHome());
   else if (state.route === 'expenses') screen.appendChild(viewExpenses());
+  else if (state.route === 'dining') screen.appendChild(viewDining());
   else if (state.route === 'people' && state.me.is_admin) screen.appendChild(viewPeople());
   else if (state.route === 'settle') screen.appendChild(viewSettle());
   else if (state.route === 'settings' && state.me.is_admin) screen.appendChild(viewSettings());
@@ -1407,6 +1416,532 @@ function openMemberStatement(memberId) {
         openAcconto(memberId);
       });
     }
+  });
+}
+
+// ============================================================
+//  RISTORANTI / TAVOLATE  (valuta L.E, separata dai saldi €)
+// ============================================================
+function viewDining() {
+  const wrap = document.createElement('div');
+  if (state.diningSessionId) renderDiningSession(wrap, state.diningSessionId);
+  else renderDiningList(wrap);
+  return wrap;
+}
+
+function diningSessionRowHTML(s) {
+  const date = s.dined_on
+    ? new Date(s.dined_on).toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: 'short' })
+    : dateLabel(s.created_at);
+  const title = s.title || s.restaurant_name;
+  const badge = s.status === 'open'
+    ? '<span class="chip active" style="font-size:10px">aperta</span>'
+    : '<span class="chip" style="font-size:10px">chiusa</span>';
+  return `
+    <div class="expense-row" data-sess="${s.id}" style="cursor:pointer">
+      <div class="expense-icon">${s.emoji || '🍝'}</div>
+      <div class="expense-meta">
+        <div class="title">${escapeHtml(title)} ${badge}</div>
+        <div class="sub">${escapeHtml(s.restaurant_name)} · ${date} · ${s.people} ${s.people === 1 ? 'persona' : 'persone'}</div>
+      </div>
+      <div class="expense-amount">${fmtCur(s.grand_total, s.currency)}</div>
+    </div>`;
+}
+
+async function renderDiningList(wrap) {
+  wrap.innerHTML = '<div class="muted" style="padding:30px;text-align:center">Caricamento…</div>';
+  let restaurants = [], sessions = [];
+  try {
+    [restaurants, sessions] = await Promise.all([
+      api('restaurants').then(r => r.restaurants),
+      api('dining_sessions').then(r => r.sessions),
+    ]);
+  } catch (e) { wrap.innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`; return; }
+  wrap.innerHTML = '';
+
+  const intro = document.createElement('div');
+  intro.className = 'card';
+  intro.innerHTML = `
+    <h2>🍝 Cene al ristorante</h2>
+    <div style="font-size:13px;color:var(--muted);line-height:1.6">
+      Apri una <b style="color:var(--text)">tavolata</b>, ognuno aggiunge i piatti che ha preso dal menù.
+      A fine cena ognuno vede quanto deve <b style="color:var(--text)">(in L.E)</b> e paga Thomas, che salda il ristorante.
+    </div>`;
+  wrap.appendChild(intro);
+
+  const newBtn = document.createElement('button');
+  newBtn.className = 'btn primary full lg';
+  newBtn.style.margin = '2px 0 14px';
+  newBtn.innerHTML = '➕ Nuova tavolata';
+  newBtn.addEventListener('click', () => openNewDiningSession(restaurants));
+  wrap.appendChild(newBtn);
+
+  const bindRows = (container) => container.querySelectorAll('[data-sess]').forEach(r =>
+    r.addEventListener('click', () => { state.diningSessionId = +r.dataset.sess; render(); }));
+
+  if (!sessions.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.innerHTML = '🍽️ Nessuna tavolata ancora.<br>Tocca "Nuova tavolata" per iniziare!';
+    wrap.appendChild(empty);
+  } else {
+    const open = sessions.filter(s => s.status === 'open');
+    const closed = sessions.filter(s => s.status !== 'open');
+    if (open.length) {
+      const c = document.createElement('div'); c.className = 'card';
+      c.innerHTML = `<h2>In corso</h2>` + open.map(diningSessionRowHTML).join('');
+      bindRows(c); wrap.appendChild(c);
+    }
+    if (closed.length) {
+      const c = document.createElement('div'); c.className = 'card';
+      c.innerHTML = `<h2>Chiuse</h2>` + closed.map(diningSessionRowHTML).join('');
+      bindRows(c); wrap.appendChild(c);
+    }
+  }
+
+  if (state.me.is_admin) {
+    const manage = document.createElement('button');
+    manage.className = 'btn ghost full';
+    manage.textContent = '🍽️  Gestisci ristoranti e menù';
+    manage.addEventListener('click', () => openRestaurantManager());
+    wrap.appendChild(manage);
+  }
+}
+
+function openNewDiningSession(restaurants) {
+  if (!restaurants || !restaurants.length) return toast('Aggiungi prima un ristorante', true);
+  let rid = restaurants[0].id;
+  const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD locale
+  function html() {
+    return `
+      <h2>➕ Nuova tavolata</h2>
+      <div class="form-group"><label>Ristorante</label>
+        <div class="cat-grid">
+          ${restaurants.map(r => `<button type="button" class="cat-tile ${r.id === rid ? 'active' : ''}" data-rid="${r.id}"><span>${r.emoji || '🍝'}</span>${escapeHtml(r.name)}</button>`).join('')}
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Data</label><input type="date" id="dsDate" value="${today}" /></div>
+        <div class="form-group"><label>Nome (facoltativo)</label><input id="dsTitle" placeholder="es. Cena sabato" /></div>
+      </div>
+      <div class="row gap" style="margin-top:14px">
+        <button class="btn ghost" id="dsCancel" style="flex:1">Annulla</button>
+        <button class="btn primary" id="dsSave" style="flex:2">Apri tavolata</button>
+      </div>`;
+  }
+  openModal(html(), (modal, close) => {
+    const bind = () => {
+      modal.querySelectorAll('[data-rid]').forEach(b => b.addEventListener('click', () => {
+        rid = +b.dataset.rid;
+        modal.querySelectorAll('[data-rid]').forEach(x => x.classList.toggle('active', +x.dataset.rid === rid));
+      }));
+      modal.querySelector('#dsCancel').addEventListener('click', close);
+      modal.querySelector('#dsSave').addEventListener('click', async () => {
+        try {
+          const { id } = await api('dining_session_create', {
+            restaurant_id: rid,
+            dined_on: modal.querySelector('#dsDate').value || null,
+            title: modal.querySelector('#dsTitle').value.trim() || null,
+          });
+          toast('Tavolata aperta 🍝');
+          close();
+          state.diningSessionId = id;
+          render();
+        } catch (e) { toast(e.message, true); }
+      });
+    };
+    bind();
+  });
+}
+
+async function renderDiningSession(wrap, id) {
+  wrap.innerHTML = '<div class="muted" style="padding:30px;text-align:center">Caricamento…</div>';
+  let data;
+  try { data = await api(`dining_session_get&id=${id}`); }
+  catch (e) { wrap.innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`; return; }
+  wrap.innerHTML = '';
+
+  const s = data.session;
+  const cur = s.currency || 'L.E';
+  const isOpen = s.status === 'open';
+  const treasurerId = data.treasurer_id;
+  const isTreas = state.me.id === treasurerId || state.me.is_admin;
+  const meId = data.me_id;
+  const treasurerName = (state.members.find(m => m.id === treasurerId) || {}).name || 'Thomas';
+
+  const back = document.createElement('button');
+  back.className = 'btn ghost sm';
+  back.style.marginBottom = '12px';
+  back.innerHTML = '←  Tutte le tavolate';
+  back.addEventListener('click', () => { state.diningSessionId = null; render(); });
+  wrap.appendChild(back);
+
+  const head = document.createElement('div');
+  head.className = 'hero-card';
+  head.innerHTML = `
+    <div class="hero-label">${s.emoji || '🍝'} ${escapeHtml(s.title || s.restaurant_name)}${isOpen ? '' : ' · chiusa'}</div>
+    <div class="hero-value">${fmtCur(data.grand_total, cur)}</div>
+    <div class="hero-meta">
+      <div><div class="lbl">Ristorante</div><div class="v" style="font-size:14px">${escapeHtml(s.restaurant_name)}</div></div>
+      <div><div class="lbl">Incassato</div><div class="v">${fmtCur(data.collected, cur)}</div></div>
+      <div><div class="lbl">Mancano</div><div class="v">${fmtCur(data.grand_total - data.collected, cur)}</div></div>
+    </div>`;
+  wrap.appendChild(head);
+
+  if (isOpen) {
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn primary full lg';
+    addBtn.style.margin = '2px 0 14px';
+    addBtn.innerHTML = '🍽️  Aggiungi i miei piatti';
+    addBtn.addEventListener('click', () => openMenuPicker(s, meId));
+    wrap.appendChild(addBtn);
+  }
+
+  const list = document.createElement('div');
+  list.className = 'card';
+  let inner = `<h2>Il conto · ognuno paga ${escapeHtml(treasurerName)}</h2>`;
+  if (!data.members.length) {
+    inner += '<div class="muted" style="font-size:13px;padding:6px 0">Ancora nessun piatto. Tocca "Aggiungi i miei piatti".</div>';
+  }
+  data.members.forEach(m => {
+    const mem = state.members.find(x => x.id === m.member_id) || { id: m.member_id, name: m.name };
+    const mine = m.member_id === meId;
+    const canEdit = isOpen && (mine || isTreas);
+    const canPaid = mine || isTreas;
+    inner += `
+      <div class="dining-member">
+        <div class="member-row" style="padding:6px 0;cursor:default">
+          ${avatarHTML(mem, 36)}
+          <div class="name">${escapeHtml(m.name)}${mine ? ' <span class="chip active" style="font-size:10px">tu</span>' : ''}
+            <div>${m.items.reduce((a, b) => a + b.qty, 0)} piatti</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-weight:700;font-feature-settings:'tnum' 1">${fmtCur(m.total, cur)}</div>
+            ${m.paid
+              ? '<span class="chip active" style="font-size:10px;margin-top:2px">pagato ✓</span>'
+              : '<span class="chip" style="font-size:10px;margin-top:2px">da pagare</span>'}
+          </div>
+        </div>
+        <div class="dining-items">
+          ${m.items.map(it => `
+            <div class="dining-item-row">
+              <span>${it.qty > 1 ? `<b>${it.qty}×</b> ` : ''}${escapeHtml(it.name)}</span>
+              <span class="row gap" style="align-items:center;gap:8px">
+                ${fmtCur(it.line_total, cur)}
+                ${canEdit ? `<button class="mini-x" data-rm="${it.id}" title="Togli uno">✕</button>` : ''}
+              </span>
+            </div>`).join('')}
+        </div>
+        <div class="row gap" style="margin-top:8px">
+          ${canEdit ? `<button class="btn ghost sm" data-add="${m.member_id}" style="flex:1">+ piatto</button>` : ''}
+          ${canPaid ? `<button class="btn ${m.paid ? 'ghost' : 'primary'} sm" data-paid="${m.member_id}" style="flex:1">${m.paid ? 'Annulla' : '✓ Ha pagato'}</button>` : ''}
+        </div>
+      </div>`;
+  });
+  list.innerHTML = inner;
+  wrap.appendChild(list);
+
+  list.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', async () => {
+    try { await api('dining_order_remove', { id: +b.dataset.rm }); render(); }
+    catch (e) { toast(e.message, true); }
+  }));
+  list.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => openMenuPicker(s, +b.dataset.add)));
+  list.querySelectorAll('[data-paid]').forEach(b => b.addEventListener('click', async () => {
+    try { await api('dining_paid_toggle', { session_id: s.id, member_id: +b.dataset.paid }); render(); }
+    catch (e) { toast(e.message, true); }
+  }));
+
+  if (isTreas) {
+    const actions = document.createElement('div');
+    actions.className = 'row gap';
+    actions.style.marginTop = '4px';
+    actions.innerHTML = `
+      <button class="btn ghost" id="dClose" style="flex:2">${isOpen ? '🔒 Chiudi tavolata' : '🔓 Riapri'}</button>
+      <button class="btn danger" id="dDel" style="flex:1">🗑️ Elimina</button>`;
+    actions.querySelector('#dClose').addEventListener('click', async () => {
+      try { await api('dining_session_close', { id: s.id, reopen: !isOpen }); toast(isOpen ? 'Tavolata chiusa' : 'Riaperta'); render(); }
+      catch (e) { toast(e.message, true); }
+    });
+    actions.querySelector('#dDel').addEventListener('click', async () => {
+      if (!confirm('Eliminare la tavolata e tutti gli ordini?')) return;
+      try { await api('dining_session_delete', { id: s.id }); toast('Tavolata eliminata'); state.diningSessionId = null; render(); }
+      catch (e) { toast(e.message, true); }
+    });
+    wrap.appendChild(actions);
+  }
+}
+
+// ---- Menu picker (carrello) ----
+async function openMenuPicker(session, memberId) {
+  const cur = session.currency || 'L.E';
+  let menu;
+  try { menu = await api(`restaurant_menu&restaurant_id=${session.restaurant_id}`); }
+  catch (e) { return toast(e.message, true); }
+  const items = menu.items;
+  if (!items.length) return toast('Menù vuoto: aggiungi piatti dalle impostazioni', true);
+
+  const cart = {};   // menu_item_id -> qty
+  const itemById = {};
+  const sections = [];
+  const grouped = {};
+  items.forEach(it => {
+    itemById[it.id] = it;
+    if (!grouped[it.section]) { grouped[it.section] = []; sections.push(it.section); }
+    grouped[it.section].push(it);
+  });
+
+  const canPickOther = (state.me.is_admin || state.me.id === (state.trip?.payer_member_id || 1));
+  const targetName = (state.members.find(m => m.id === memberId) || {}).name || '';
+
+  function subtotal() {
+    return Object.entries(cart).reduce((s, [id, q]) => s + (itemById[id] ? itemById[id].price * q : 0), 0);
+  }
+
+  openModal('<div id="mpRoot"></div>', (modal, close) => {
+    function draw(filter) {
+      filter = (filter || '').toLowerCase().trim();
+      const root = modal.querySelector('#mpRoot');
+      const totalQty = Object.values(cart).reduce((a, b) => a + b, 0);
+      let body = `
+        <h2>🍽️ Cosa ha preso ${escapeHtml(targetName)}?</h2>
+        <div class="menu-search">
+          <input id="mpSearch" placeholder="Cerca un piatto…" value="${escapeHtml(filter)}" autocomplete="off" />
+        </div>`;
+      sections.forEach(sec => {
+        const rows = grouped[sec].filter(it => !filter || it.name.toLowerCase().includes(filter) || (it.description || '').toLowerCase().includes(filter));
+        if (!rows.length) return;
+        body += `<div class="menu-section">${escapeHtml(sec)}</div>`;
+        rows.forEach(it => {
+          const q = cart[it.id] || 0;
+          body += `
+            <div class="menu-row">
+              <div class="mi">
+                <div class="nm">${escapeHtml(it.name)}</div>
+                ${it.description ? `<div class="ds">${escapeHtml(it.description)}</div>` : ''}
+                <div class="pr">${fmtCur(it.price, cur)}</div>
+              </div>
+              <div class="qty-stepper">
+                ${q > 0 ? `<button class="minus" data-minus="${it.id}">−</button><span class="q">${q}</span>` : ''}
+                <button class="plus" data-plus="${it.id}">+</button>
+              </div>
+            </div>`;
+        });
+      });
+      body += `
+        <button class="btn ghost full sm" id="mpFree" style="margin-top:14px">➕ Voce fuori menù</button>
+        <div class="menu-footer">
+          <div class="row between" style="margin-bottom:10px">
+            <span class="muted" style="font-size:13px">${totalQty} piatti</span>
+            <b style="font-size:18px;font-feature-settings:'tnum' 1">${fmtCur(subtotal(), cur)}</b>
+          </div>
+          <div class="row gap">
+            <button class="btn ghost" id="mpCancel" style="flex:1">Annulla</button>
+            <button class="btn primary" id="mpSave" style="flex:2">Aggiungi al conto</button>
+          </div>
+        </div>`;
+      root.innerHTML = body;
+
+      root.querySelectorAll('[data-plus]').forEach(b => b.addEventListener('click', () => {
+        const id = b.dataset.plus; cart[id] = (cart[id] || 0) + 1; draw(modal.querySelector('#mpSearch').value);
+      }));
+      root.querySelectorAll('[data-minus]').forEach(b => b.addEventListener('click', () => {
+        const id = b.dataset.minus; cart[id] = Math.max(0, (cart[id] || 0) - 1); if (!cart[id]) delete cart[id]; draw(modal.querySelector('#mpSearch').value);
+      }));
+      const search = root.querySelector('#mpSearch');
+      search.addEventListener('input', () => { const v = search.value; draw(v); const ns = modal.querySelector('#mpSearch'); ns.focus(); ns.setSelectionRange(v.length, v.length); });
+      root.querySelector('#mpCancel').addEventListener('click', close);
+      root.querySelector('#mpFree').addEventListener('click', () => openFreeItem(session, memberId, close));
+      root.querySelector('#mpSave').addEventListener('click', async () => {
+        const list = Object.entries(cart).filter(([, q]) => q > 0).map(([id, q]) => ({ menu_item_id: +id, qty: q }));
+        if (!list.length) return toast('Seleziona almeno un piatto', true);
+        try {
+          await api('dining_order_add', { session_id: session.id, member_id: memberId, items: list });
+          toast('Piatti aggiunti 🍽️');
+          close();
+          render();
+        } catch (e) { toast(e.message, true); }
+      });
+    }
+    draw('');
+  });
+}
+
+// voce libera (fuori menù)
+function openFreeItem(session, memberId, parentClose) {
+  const cur = session.currency || 'L.E';
+  const html = `
+    <h2>➕ Voce fuori menù</h2>
+    <div class="form-group"><label>Cosa</label><input id="fiName" placeholder="es. Acqua, Coca Cola, Caffè…" /></div>
+    <div class="form-group"><label>Prezzo (${escapeHtml(cur)})</label><input type="number" inputmode="decimal" step="1" id="fiPrice" placeholder="0" /></div>
+    <div class="form-group"><label>Quantità</label><input type="number" inputmode="numeric" step="1" id="fiQty" value="1" /></div>
+    <div class="row gap" style="margin-top:14px">
+      <button class="btn ghost" id="fiCancel" style="flex:1">Annulla</button>
+      <button class="btn primary" id="fiSave" style="flex:2">Aggiungi</button>
+    </div>`;
+  openModal(html, (modal, close) => {
+    modal.querySelector('#fiCancel').addEventListener('click', close);
+    modal.querySelector('#fiSave').addEventListener('click', async () => {
+      const name = modal.querySelector('#fiName').value.trim();
+      const price = parseFloat((modal.querySelector('#fiPrice').value || '').replace(',', '.'));
+      const qty = Math.max(1, parseInt(modal.querySelector('#fiQty').value || '1', 10));
+      if (!name) return toast('Inserisci il nome', true);
+      if (!(price >= 0)) return toast('Prezzo non valido', true);
+      try {
+        await api('dining_order_add', { session_id: session.id, member_id: memberId, items: [{ name, price, qty }] });
+        toast('Aggiunto 🍽️');
+        close();
+        if (parentClose) parentClose();
+        render();
+      } catch (e) { toast(e.message, true); }
+    });
+    setTimeout(() => modal.querySelector('#fiName')?.focus(), 60);
+  });
+}
+
+// ---- Gestione ristoranti & menù (admin) ----
+async function openRestaurantManager() {
+  let restaurants;
+  try { restaurants = (await api('restaurants')).restaurants; }
+  catch (e) { return toast(e.message, true); }
+  let html = `<h2>🍽️ Ristoranti</h2>`;
+  html += restaurants.map(r => `
+    <div class="member-row" data-redit="${r.id}">
+      <div class="expense-icon">${r.emoji || '🍝'}</div>
+      <div class="name">${escapeHtml(r.name)}<div>valuta ${escapeHtml(r.currency)}</div></div>
+      <span class="chip" style="font-size:11px">menù ›</span>
+    </div>`).join('') || '<div class="muted" style="font-size:13px">Nessun ristorante.</div>';
+  html += `<button class="btn ghost full" id="raNew" style="margin-top:12px">+ Nuovo ristorante</button>
+    <button class="btn ghost full" id="raClose" style="margin-top:8px">Chiudi</button>`;
+  openModal(html, (modal, close) => {
+    modal.querySelector('#raClose').addEventListener('click', close);
+    modal.querySelector('#raNew').addEventListener('click', () => { close(); openRestaurantEditor(null); });
+    modal.querySelectorAll('[data-redit]').forEach(r => r.addEventListener('click', () => {
+      close();
+      openMenuManager(restaurants.find(x => x.id === +r.dataset.redit));
+    }));
+  });
+}
+
+function openRestaurantEditor(rest) {
+  const isNew = !rest;
+  const html = `
+    <h2>${isNew ? 'Nuovo ristorante' : 'Modifica ' + escapeHtml(rest.name)}</h2>
+    <div class="form-row">
+      <div class="form-group"><label>Emoji</label><input id="reEmoji" value="${escapeHtml(rest?.emoji || '🍝')}" /></div>
+      <div class="form-group"><label>Valuta</label><input id="reCur" value="${escapeHtml(rest?.currency || 'L.E')}" /></div>
+    </div>
+    <div class="form-group"><label>Nome</label><input id="reName" value="${escapeHtml(rest?.name || '')}" placeholder="es. Tre Fratelli" /></div>
+    <div class="form-group"><label>Nota (facoltativa)</label><textarea id="reNote" rows="2">${escapeHtml(rest?.note || '')}</textarea></div>
+    <div class="row gap" style="margin-top:14px">
+      ${!isNew ? '<button class="btn danger" id="reDel">Elimina</button>' : ''}
+      <button class="btn ghost" id="reCancel" style="flex:1">Annulla</button>
+      <button class="btn primary" id="reSave" style="flex:2">Salva</button>
+    </div>`;
+  openModal(html, (modal, close) => {
+    modal.querySelector('#reCancel').addEventListener('click', close);
+    modal.querySelector('#reSave').addEventListener('click', async () => {
+      const name = modal.querySelector('#reName').value.trim();
+      if (!name) return toast('Nome obbligatorio', true);
+      try {
+        const r = await api('restaurant_save', {
+          id: rest?.id || 0,
+          name,
+          currency: modal.querySelector('#reCur').value.trim() || 'L.E',
+          emoji: modal.querySelector('#reEmoji').value.trim() || '🍝',
+          note: modal.querySelector('#reNote').value.trim() || null,
+        });
+        toast('Salvato');
+        close();
+        if (isNew) openMenuManager({ id: r.id, name, currency: modal.querySelector('#reCur')?.value || 'L.E', emoji: '🍝' });
+      } catch (e) { toast(e.message, true); }
+    });
+    modal.querySelector('#reDel')?.addEventListener('click', async () => {
+      if (!confirm('Eliminare ' + rest.name + '? (le tavolate restano)')) return;
+      try { await api('restaurant_delete', { id: rest.id }); toast('Eliminato'); close(); }
+      catch (e) { toast(e.message, true); }
+    });
+  });
+}
+
+async function openMenuManager(rest) {
+  let data;
+  try { data = await api(`restaurant_menu&restaurant_id=${rest.id}`); }
+  catch (e) { return toast(e.message, true); }
+  const cur = data.restaurant.currency || 'L.E';
+  const items = data.items;
+  const sections = [];
+  const grouped = {};
+  items.forEach(it => { if (!grouped[it.section]) { grouped[it.section] = []; sections.push(it.section); } grouped[it.section].push(it); });
+
+  let html = `<h2>${rest.emoji || '🍝'} ${escapeHtml(data.restaurant.name)} · menù</h2>
+    <p style="margin:0 0 10px;font-size:12px;color:var(--muted)">Prezzi in ${escapeHtml(cur)}. Tocca un piatto per modificarlo.</p>`;
+  if (!items.length) html += '<div class="muted" style="font-size:13px">Menù vuoto.</div>';
+  sections.forEach(sec => {
+    html += `<div class="menu-section">${escapeHtml(sec)}</div>`;
+    grouped[sec].forEach(it => {
+      html += `
+        <div class="menu-row" data-medit="${it.id}" style="cursor:pointer">
+          <div class="mi"><div class="nm">${escapeHtml(it.name)}</div>${it.description ? `<div class="ds">${escapeHtml(it.description)}</div>` : ''}</div>
+          <div class="pr">${fmtCur(it.price, cur)}</div>
+        </div>`;
+    });
+  });
+  html += `<button class="btn ghost full" id="miNew" style="margin-top:14px">+ Aggiungi piatto</button>
+    <button class="btn ghost full" id="reEdit" style="margin-top:8px">⚙️ Modifica ristorante</button>
+    <button class="btn ghost full" id="mmClose" style="margin-top:8px">Chiudi</button>`;
+  openModal(html, (modal, close) => {
+    modal.querySelector('#mmClose').addEventListener('click', close);
+    modal.querySelector('#reEdit').addEventListener('click', () => { close(); openRestaurantEditor(data.restaurant); });
+    modal.querySelector('#miNew').addEventListener('click', () => { close(); openMenuItemEditor(rest, null, sections); });
+    modal.querySelectorAll('[data-medit]').forEach(r => r.addEventListener('click', () => {
+      close(); openMenuItemEditor(rest, items.find(x => x.id === +r.dataset.medit), sections);
+    }));
+  });
+}
+
+function openMenuItemEditor(rest, item, sections) {
+  const isNew = !item;
+  const cur = rest.currency || 'L.E';
+  const html = `
+    <h2>${isNew ? 'Nuovo piatto' : 'Modifica piatto'}</h2>
+    <div class="form-group"><label>Sezione</label>
+      <input id="miSection" list="miSections" value="${escapeHtml(item?.section || (sections[0] || 'Menù'))}" />
+      <datalist id="miSections">${(sections || []).map(s => `<option value="${escapeHtml(s)}">`).join('')}</datalist>
+    </div>
+    <div class="form-group"><label>Nome</label><input id="miName" value="${escapeHtml(item?.name || '')}" /></div>
+    <div class="form-group"><label>Descrizione (facoltativa)</label><input id="miDesc" value="${escapeHtml(item?.description || '')}" /></div>
+    <div class="form-group"><label>Prezzo (${escapeHtml(cur)})</label><input type="number" inputmode="decimal" step="1" id="miPrice" value="${item?.price != null ? Math.round(item.price) : ''}" /></div>
+    <div class="row gap" style="margin-top:14px">
+      ${!isNew ? '<button class="btn danger" id="miDel">Elimina</button>' : ''}
+      <button class="btn ghost" id="miCancel" style="flex:1">Annulla</button>
+      <button class="btn primary" id="miSave" style="flex:2">Salva</button>
+    </div>`;
+  openModal(html, (modal, close) => {
+    const reopen = () => openMenuManager(rest);
+    modal.querySelector('#miCancel').addEventListener('click', () => { close(); reopen(); });
+    modal.querySelector('#miSave').addEventListener('click', async () => {
+      const name = modal.querySelector('#miName').value.trim();
+      const price = parseFloat((modal.querySelector('#miPrice').value || '').replace(',', '.'));
+      if (!name) return toast('Nome obbligatorio', true);
+      if (!(price >= 0)) return toast('Prezzo non valido', true);
+      try {
+        await api('menu_item_save', {
+          id: item?.id || 0,
+          restaurant_id: rest.id,
+          section: modal.querySelector('#miSection').value.trim() || 'Menù',
+          name,
+          description: modal.querySelector('#miDesc').value.trim() || null,
+          price,
+        });
+        toast('Salvato');
+        close(); reopen();
+      } catch (e) { toast(e.message, true); }
+    });
+    modal.querySelector('#miDel')?.addEventListener('click', async () => {
+      if (!confirm('Eliminare ' + item.name + '?')) return;
+      try { await api('menu_item_delete', { id: item.id }); toast('Eliminato'); close(); reopen(); }
+      catch (e) { toast(e.message, true); }
+    });
   });
 }
 

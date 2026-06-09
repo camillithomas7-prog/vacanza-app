@@ -299,14 +299,15 @@ h1, h2, h3, h4 {
   -webkit-backdrop-filter: saturate(180%) blur(14px);
   backdrop-filter: saturate(180%) blur(14px);
   border: 1px solid var(--border);
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  display: flex;
+  align-items: center;
   padding: 6px;
   z-index: 40;
   border-radius: var(--r-pill);
   box-shadow: var(--shadow-lg);
 }
 .tabbar button {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -324,13 +325,13 @@ h1, h2, h3, h4 {
 .tabbar button.active { color: var(--accent); background: var(--accent-tint); }
 
 .tabbar button.fab-tab {
+  flex: 0 0 auto;
   background: var(--text);
   color: white;
   margin: -18px 6px 0;
   width: 52px;
   height: 52px;
   align-self: center;
-  justify-self: center;
   border-radius: 50%;
   box-shadow:
     0 10px 20px -6px rgba(12, 10, 9, 0.35),
@@ -1039,10 +1040,138 @@ h1, h2, h3, h4 {
 .member-tile:nth-child(8) { animation-delay: .25s; }
 
 /* ============================================================
+   DINING / RISTORANTI
+   ============================================================ */
+.dining-member {
+  border-bottom: 1px solid var(--border);
+  padding: 10px 0;
+}
+.dining-member:last-child { border-bottom: 0; }
+.dining-items {
+  margin: 2px 0 4px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dining-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-soft);
+  padding: 2px 0;
+  letter-spacing: -0.005em;
+}
+.dining-item-row > span:last-child {
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mini-x {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.mini-x:hover { background: var(--danger-tint); color: var(--danger); border-color: var(--danger); }
+
+/* Menu picker (modal) */
+.menu-search {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  padding: 4px 0 10px;
+  z-index: 2;
+}
+.menu-section {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 600;
+  margin: 16px 0 6px;
+}
+.menu-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+.menu-row:last-child { border-bottom: 0; }
+.menu-row .mi {
+  flex: 1;
+  min-width: 0;
+}
+.menu-row .mi .nm {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.005em;
+}
+.menu-row .mi .ds {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+.menu-row .pr {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-soft);
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.qty-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.qty-stepper button {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qty-stepper button.plus { background: var(--text); color: #fff; border-color: var(--text); }
+.qty-stepper button:active { transform: scale(0.92); }
+.qty-stepper .q {
+  min-width: 18px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 15px;
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+}
+.menu-footer {
+  position: sticky;
+  bottom: 0;
+  background: var(--surface);
+  padding: 12px 0 calc(4px + var(--safe-bottom));
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+
+/* ============================================================
    RESPONSIVE
    ============================================================ */
 @media (max-width: 380px) {
   .stat .value { font-size: 20px; }
   .hero-card .hero-value { font-size: 36px; }
   .cat-grid { grid-template-columns: repeat(3, 1fr); }
+  .tabbar button b { font-size: 9px; }
 }

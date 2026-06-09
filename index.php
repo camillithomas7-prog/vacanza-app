@@ -54,10 +54,11 @@ header('Cache-Control: no-cache, must-revalidate');
       <main class="screen" id="screen"></main>
       <nav class="tabbar">
         <button data-route="home"><span>🏠</span><b>Home</b></button>
-        <button data-route="expenses"><span>📋</span><b>Spese</b></button>
+        <button data-route="dining"><span>🍝</span><b>Cene</b></button>
         <button data-route="new" class="fab-tab"><span>➕</span></button>
-        <button data-route="people"><span>👥</span><b>Persone</b></button>
+        <button data-route="expenses"><span>📋</span><b>Spese</b></button>
         <button data-route="settle"><span>💳</span><b>Saldi</b></button>
+        <button data-route="people"><span>👥</span><b>Persone</b></button>
       </nav>
     </div>
   </template>
