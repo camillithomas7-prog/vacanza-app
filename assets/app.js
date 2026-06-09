@@ -1946,5 +1946,101 @@ function openMenuItemEditor(rest, item, sections) {
   });
 }
 
+// ============================================================
+//  SFONDO LASER-GRID (canvas, retro-futurista, "breathing pulse")
+// ============================================================
+function initBgFx() {
+  const c = document.getElementById('bgfx');
+  if (!c || !c.getContext) return;
+  const ctx = c.getContext('2d');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let W = 0, H = 0, dpr = 1, raf = 0;
+  const ptr = { x: 0.5, y: 0.5, tx: 0.5, ty: 0.5 };
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = c.width = Math.floor(innerWidth * dpr);
+    H = c.height = Math.floor(innerHeight * dpr);
+    c.style.width = innerWidth + 'px';
+    c.style.height = innerHeight + 'px';
+  }
+  resize();
+  addEventListener('resize', resize, { passive: true });
+  addEventListener('pointermove', e => { ptr.tx = e.clientX / innerWidth; ptr.ty = e.clientY / innerHeight; }, { passive: true });
+
+  // anchor "stelle" sparse che pulsano
+  const anchors = Array.from({ length: 26 }, (_, i) => ({
+    x: (Math.sin(i * 12.9898) * 43758.5453 % 1 + 1) % 1,
+    y: (Math.sin(i * 78.233) * 12543.123 % 1 + 1) % 1,
+    p: (i * 0.37) % 1,
+  }));
+
+  let t = 0;
+  function draw() {
+    t += reduce ? 0 : 0.0125;
+    ptr.x += (ptr.tx - ptr.x) * 0.045;
+    ptr.y += (ptr.ty - ptr.y) * 0.045;
+    const breathe = 0.5 + 0.5 * Math.sin(t * 0.55);   // pulsazione lenta
+
+    ctx.clearRect(0, 0, W, H);
+
+    const horizon = H * (0.40 + (ptr.y - 0.5) * 0.05);
+    const vanish = W * (0.5 + (ptr.x - 0.5) * 0.10);
+
+    // bagliore orizzonte
+    const g = ctx.createRadialGradient(vanish, horizon, 0, vanish, horizon, W * 0.6);
+    g.addColorStop(0, `rgba(74,222,128,${0.10 + 0.05 * breathe})`);
+    g.addColorStop(1, 'rgba(74,222,128,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.lineWidth = 1 * dpr;
+
+    // linee orizzontali che scorrono verso lo spettatore (pavimento prospettico)
+    const rows = 22;
+    for (let i = 0; i < rows; i++) {
+      let p = (i + (t * 0.18) % 1) / rows;       // 0..1
+      const y = horizon + (H - horizon) * (p * p);
+      if (y < horizon) continue;
+      const a = Math.min(0.22, p * 0.30) * (0.55 + 0.45 * breathe);
+      ctx.strokeStyle = `rgba(74,222,128,${a})`;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+
+    // linee verticali che convergono al punto di fuga
+    const cols = 26;
+    for (let i = -cols; i <= cols; i++) {
+      const botX = vanish + (i / cols) * (W * 1.5);
+      const d = Math.abs(i) / cols;
+      const a = (0.16 - d * 0.12) * (0.55 + 0.45 * breathe);
+      if (a <= 0.01) continue;
+      ctx.strokeStyle = `rgba(74,222,128,${a})`;
+      ctx.beginPath(); ctx.moveTo(vanish, horizon); ctx.lineTo(botX, H); ctx.stroke();
+    }
+
+    // anchor sparse luminose nella parte alta
+    for (const an of anchors) {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 1.1 + an.p * 6.28);
+      const x = an.x * W;
+      const y = an.y * horizon * 0.95;
+      const r = (1.1 + pulse * 1.6) * dpr;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, 6.2832);
+      ctx.fillStyle = `rgba(110,231,160,${0.10 + pulse * 0.35})`;
+      ctx.fill();
+    }
+
+    raf = requestAnimationFrame(draw);
+  }
+
+  function start() { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) cancelAnimationFrame(raf); else start();
+  });
+  if (reduce) { draw(); }   // disegno statico
+  else start();
+}
+
 // ============ START ============
+initBgFx();
 boot();

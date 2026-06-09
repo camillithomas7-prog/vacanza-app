@@ -8,19 +8,20 @@ header('Cache-Control: no-cache, must-revalidate');
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-  <meta name="theme-color" content="#F8F2E7" />
+  <meta name="theme-color" content="#04070A" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="manifest" href="manifest.json" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@300..600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..800&family=Geist+Mono:wght@300..600&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="assets/styles.css?v=<?= $cssV ?>" />
   <title>Vacanza</title>
 </head>
 <body>
+  <canvas id="bgfx" aria-hidden="true"></canvas>
   <div id="app"></div>
 
   <!-- ============== LOGIN VIEW ============== -->
