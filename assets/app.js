@@ -64,9 +64,37 @@ const avatarColor = (id) => {
   return palette[(id - 1) % palette.length];
 };
 function avatarHTML(member, size) {
+  const dim = size ? `width:${size}px;height:${size}px;` : '';
+  if (member && member.avatar) {
+    return `<div class="avatar-circle has-photo" style="${dim}"><img src="${member.avatar}" alt="${escapeHtml(member.name || '')}" loading="lazy" /></div>`;
+  }
   const bg = avatarColor(member.id || 1);
-  const s = size ? `width:${size}px;height:${size}px;font-size:${Math.round(size * .4)}px;` : '';
+  const s = size ? `${dim}font-size:${Math.round(size * .4)}px;` : '';
   return `<div class="avatar-circle" style="background:${bg}; ${s}">${initials(member.name)}</div>`;
+}
+
+// Ridimensiona/ritaglia un'immagine a un quadrato (cover) e ritorna un data URL JPEG leggero
+function fileToAvatarDataURL(file, size = 256) {
+  return new Promise((resolve, reject) => {
+    if (!file || !/^image\//.test(file.type || '')) return reject(new Error('Seleziona un\'immagine'));
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Errore lettura file'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Formato immagine non supportato (prova JPG o PNG)'));
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const scale = Math.max(size / img.width, size / img.height);
+        const w = img.width * scale, h = img.height * scale;
+        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 function dateLabel(s) {
   if (!s) return '';
@@ -1112,8 +1140,18 @@ function openMyBudget() {
 // ============ MEMBER EDITOR (admin) ============
 function openMemberEditor(member) {
   const isNew = !member;
+  let photoData = member?.avatar || '';
+  const previewHTML = (pd) => avatarHTML({ id: member?.id || 0, name: member?.name || '?', avatar: pd }, 84);
   const html = `
     <h2>${isNew ? 'Nuova persona' : 'Modifica ' + escapeHtml(member.name)}</h2>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin:4px 0 16px">
+      <div id="mAvatarPreview">${previewHTML(photoData)}</div>
+      <div class="row gap">
+        <button type="button" class="btn sm ghost" id="mPhotoBtn">📷 ${photoData ? 'Cambia foto' : 'Carica foto'}</button>
+        <button type="button" class="btn sm ghost" id="mPhotoDel" style="${photoData ? '' : 'display:none'}">Rimuovi</button>
+      </div>
+      <input type="file" accept="image/*" id="mPhotoInput" style="display:none" />
+    </div>
     <div class="form-group"><label>Nome</label><input id="mName" value="${escapeHtml(member?.name || '')}" /></div>
     <div class="form-group"><label>Budget (€)</label><input type="number" inputmode="decimal" step="0.01" id="mBudget" value="${member?.budget || ''}" /></div>
     <div class="form-group">
@@ -1126,6 +1164,25 @@ function openMemberEditor(member) {
     </div>
   `;
   openModal(html, (modal, close) => {
+    const preview = modal.querySelector('#mAvatarPreview');
+    const delBtn = modal.querySelector('#mPhotoDel');
+    const photoBtn = modal.querySelector('#mPhotoBtn');
+    const fileInput = modal.querySelector('#mPhotoInput');
+    function refreshPhoto() {
+      preview.innerHTML = previewHTML(photoData);
+      delBtn.style.display = photoData ? '' : 'none';
+      photoBtn.textContent = '📷 ' + (photoData ? 'Cambia foto' : 'Carica foto');
+    }
+    photoBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async () => {
+      const f = fileInput.files[0];
+      if (!f) return;
+      try { photoData = await fileToAvatarDataURL(f); refreshPhoto(); }
+      catch (e) { toast(e.message, true); }
+      fileInput.value = '';
+    });
+    delBtn.addEventListener('click', () => { photoData = ''; refreshPhoto(); });
+
     modal.querySelector('#mCancel').addEventListener('click', close);
     modal.querySelector('#mSave').addEventListener('click', async () => {
       const data = {
@@ -1135,8 +1192,12 @@ function openMemberEditor(member) {
       };
       if (!data.name) return toast('Nome obbligatorio', true);
       try {
-        if (isNew) await api('member_add', data);
-        else await api('member_update', { id: member.id, ...data });
+        if (isNew) {
+          const r = await api('member_add', data);
+          if (photoData && r && r.id) await api('member_update', { id: r.id, avatar: photoData });
+        } else {
+          await api('member_update', { id: member.id, ...data, avatar: photoData });
+        }
         toast('Salvato');
         close();
         await loadAll();

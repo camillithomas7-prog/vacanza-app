@@ -56,6 +56,14 @@ function migrate($pdo) {
   if (!has_column($pdo, 'settlement', 'category')) {
     $pdo->exec("ALTER TABLE settlement ADD COLUMN category " . (driver_name($pdo) === 'mysql' ? 'VARCHAR(50)' : 'TEXT'));
   }
+  // Allarga la colonna avatar per ospitare le foto profilo (data URL base64) — solo MySQL, idempotente
+  if (driver_name($pdo) === 'mysql') {
+    $t = $pdo->query("SELECT DATA_TYPE FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'member' AND column_name = 'avatar'")->fetch();
+    $dt = $t ? strtolower($t['DATA_TYPE']) : '';
+    if ($t && $dt !== 'mediumtext' && $dt !== 'text' && $dt !== 'longtext') {
+      $pdo->exec("ALTER TABLE member MODIFY avatar MEDIUMTEXT");
+    }
+  }
   // Seed iniziale ristoranti (Tre Fratelli) se non presenti — idempotente, gira anche su DB già esistenti
   seed_restaurants($pdo);
 }
