@@ -66,6 +66,13 @@ function migrate($pdo) {
   }
   // Foto profilo fornite via repo (asset committati) — impostate solo se l'avatar è vuoto, idempotente
   $avatarSeeds = [
+    'Thomas'   => 'assets/avatars/thomas.jpg',
+    'Syria'    => 'assets/avatars/syria.jpg',
+    'Riccardo' => 'assets/avatars/riccardo.jpg',
+    'Massimo'  => 'assets/avatars/massimo.jpg',
+    'Mirko'    => 'assets/avatars/mirko.jpg',
+    'Stefano'  => 'assets/avatars/stefano.jpg',
+    'Adriana'  => 'assets/avatars/adriana.jpg',
     'Michelle' => 'assets/avatars/michelle.jpg',
   ];
   $upd = $pdo->prepare("UPDATE member SET avatar = ? WHERE trip_id = 1 AND name = ? AND (avatar IS NULL OR avatar = '')");
