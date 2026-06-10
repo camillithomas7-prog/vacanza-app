@@ -264,7 +264,7 @@ h1, h2, h3, h4 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: calc(14px + var(--safe-top)) 18px 14px;
+  padding: calc(max(var(--safe-top), 26px) + 10px) 18px 14px;
   background: rgba(4, 7, 10, 0.6);
   -webkit-backdrop-filter: saturate(160%) blur(14px);
   backdrop-filter: saturate(160%) blur(14px);
