@@ -2,10 +2,11 @@
   "name": "Vacanza - Gestione Spese",
   "short_name": "Vacanza",
   "description": "Gestione spese di gruppo per la vacanza",
-  "start_url": "./index.html",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#F8F2E7",
-  "theme_color": "#F8F2E7",
+  "background_color": "#0a0d0a",
+  "theme_color": "#0a0d0a",
   "orientation": "portrait",
   "icons": [
     {

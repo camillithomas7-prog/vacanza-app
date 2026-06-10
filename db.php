@@ -64,6 +64,15 @@ function migrate($pdo) {
       $pdo->exec("ALTER TABLE member MODIFY avatar MEDIUMTEXT");
     }
   }
+  // Foto profilo fornite via repo (asset committati) — impostate solo se l'avatar è vuoto, idempotente
+  $avatarSeeds = [
+    'Michelle' => 'assets/avatars/michelle.jpg',
+  ];
+  $upd = $pdo->prepare("UPDATE member SET avatar = ? WHERE trip_id = 1 AND name = ? AND (avatar IS NULL OR avatar = '')");
+  foreach ($avatarSeeds as $name => $path) {
+    $upd->execute([$path, $name]);
+  }
+
   // Seed iniziale ristoranti (Tre Fratelli) se non presenti — idempotente, gira anche su DB già esistenti
   seed_restaurants($pdo);
 }
