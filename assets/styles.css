@@ -295,6 +295,7 @@ h1, h2, h3, h4 {
   border: 1px solid var(--border);
   transition: all .15s ease;
 }
+.icon-btn svg { width: 17px; height: 17px; }
 .icon-btn:hover { background: var(--surface-3); color: var(--accent); border-color: var(--border-accent); }
 
 .screen {
