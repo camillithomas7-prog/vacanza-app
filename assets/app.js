@@ -759,23 +759,31 @@ function openModal(html, onMount) {
 }
 
 // ============ NEW EXPENSE FLOW ============
-function openNewExpense() {
-  if (!state.me.is_admin) return openMyExpense();
-  let cat = CATS[0];
-  let payerId = state.trip?.payer_member_id || state.me.id;
-  let participantIds = state.members.map(m => m.id);
+function openNewExpense(existing) {
+  if (!state.me.is_admin) return openMyExpense(existing);
+  const isEdit = !!existing;
+  let cat = existing ? (catBy(existing.category) || CATS[0]) : CATS[0];
+  let payerId = existing ? +existing.paid_by_member_id : (state.trip?.payer_member_id || state.me.id);
+  let participantIds = (existing && existing.split_mode === 'equal')
+    ? (existing.shares || []).map(s => +s.member_id)
+    : state.members.map(m => m.id);
   let shares = {}; // { member_id: amount }
-  let splitMode = cat.mode;
-  let total = '';
+  if (existing && existing.split_mode !== 'equal') {
+    (existing.shares || []).forEach(s => { shares[+s.member_id] = +s.amount; });
+  }
+  let splitMode = existing ? existing.split_mode : cat.mode;
+  let total = existing ? existing.total : '';
+  let titleVal = existing ? (existing.title || '') : '';
+  let notesVal = existing ? (existing.notes || '') : '';
 
   function html() {
     return `
-      <h2>Nuova spesa</h2>
+      <h2>${isEdit ? '✏️ Modifica spesa' : 'Nuova spesa'}</h2>
       <div class="cat-grid">
         ${CATS.map(c => `<button class="cat-tile ${c.id === cat.id ? 'active' : ''}" data-cat="${c.id}"><span>${c.emoji}</span>${c.name}</button>`).join('')}
       </div>
       <div class="form-group" style="margin-top:14px"><label>Titolo</label>
-        <input id="exTitle" placeholder="${cat.name}..." />
+        <input id="exTitle" placeholder="${cat.name}..." value="${escapeHtml(titleVal)}" />
       </div>
       <div class="form-row">
         <div class="form-group"><label>Totale (€)</label>
@@ -797,11 +805,11 @@ function openNewExpense() {
       </div>
       <div id="participantsBox"></div>
       <div class="form-group"><label>Note (facoltative)</label>
-        <textarea id="exNotes" rows="2" placeholder="Aggiungi una nota..."></textarea>
+        <textarea id="exNotes" rows="2" placeholder="Aggiungi una nota...">${escapeHtml(notesVal)}</textarea>
       </div>
       <div class="row gap" style="margin-top:14px">
         <button class="btn ghost" id="exCancel" style="flex:1">Annulla</button>
-        <button class="btn primary" id="exSave" style="flex:2">Salva spesa</button>
+        <button class="btn primary" id="exSave" style="flex:2">${isEdit ? 'Salva modifiche' : 'Salva spesa'}</button>
       </div>
     `;
   }
@@ -918,8 +926,13 @@ function openNewExpense() {
         if (!body.shares.length) return toast('Inserisci le quote', true);
       }
       try {
-        await api('expense_create', body);
-        toast('Spesa registrata 🎉');
+        if (isEdit) {
+          await api('expense_update', { id: existing.id, ...body });
+          toast('Spesa aggiornata ✏️');
+        } else {
+          await api('expense_create', body);
+          toast('Spesa registrata 🎉');
+        }
         close();
         await loadAll();
         render();
@@ -1051,9 +1064,14 @@ function openExpenseDetail(id) {
       </div>
     `).join('')}
     ${e.notes ? `<div class="card" style="margin-top:14px"><h2>Note</h2><div style="font-size:14px">${escapeHtml(e.notes)}</div></div>` : ''}
-    ${canDelete ? '<button class="btn danger full" id="delExp" style="margin-top:14px">🗑️ Elimina spesa</button>' : ''}
+    ${state.me.is_admin ? '<button class="btn full" id="editExp" style="margin-top:14px">✏️ Modifica spesa</button>' : ''}
+    ${canDelete ? '<button class="btn danger full" id="delExp" style="margin-top:10px">🗑️ Elimina spesa</button>' : ''}
   `;
   openModal(html, (modal, close) => {
+    modal.querySelector('#editExp')?.addEventListener('click', () => {
+      close();
+      openNewExpense(e);
+    });
     modal.querySelector('#delExp')?.addEventListener('click', async () => {
       if (!confirm('Eliminare questa spesa?')) return;
       try {

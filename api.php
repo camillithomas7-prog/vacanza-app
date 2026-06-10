@@ -270,7 +270,7 @@ try {
       $e = $stmt->fetch();
       if (!$e) json_response(['error' => 'not found'], 404);
 
-      // Non-admin: solo le proprie spese personali (single-share = self)
+      // Non-admin: solo le proprie spese personali (single-share = self) — update semplice
       if (!$me['is_admin']) {
         if ((int)$e['created_by_member_id'] !== (int)$me['id']) {
           json_response(['error' => 'Puoi modificare solo le tue spese'], 403);
@@ -280,26 +280,71 @@ try {
         if ((int)$cnt->fetch()['n'] !== 1) {
           json_response(['error' => 'Le spese di gruppo le modifica solo l\'admin'], 403);
         }
+        $title    = trim($b['title'] ?? $e['title']);
+        $category = $b['category'] ?? $e['category'];
+        $total    = round((float)($b['total'] ?? $e['total']), 2);
+        $notes    = array_key_exists('notes', $b) ? $b['notes'] : $e['notes'];
+        if ($total <= 0 || !$title) json_response(['error' => 'Dati non validi'], 400);
+        $pdo = db();
+        $pdo->beginTransaction();
+        try {
+          $u = $pdo->prepare("UPDATE expense SET title = ?, category = ?, total = ?, notes = ? WHERE id = ?");
+          $u->execute([$title, $category, $total, $notes, $id]);
+          $us = $pdo->prepare("UPDATE expense_share SET amount = ? WHERE expense_id = ?");
+          $us->execute([$total, $id]);
+          $pdo->commit();
+          json_response(['ok' => true]);
+        } catch (Exception $ex) {
+          $pdo->rollBack();
+          json_response(['error' => $ex->getMessage()], 400);
+        }
       }
 
-      $title    = trim($b['title'] ?? $e['title']);
-      $category = $b['category'] ?? $e['category'];
-      $total    = round((float)($b['total'] ?? $e['total']), 2);
-      $notes    = array_key_exists('notes', $b) ? $b['notes'] : $e['notes'];
+      // Admin: update completo con ricostruzione delle quote (in-place, preserva occurred_at e created_by)
+      $title     = trim($b['title'] ?? $e['title']);
+      $category  = $b['category'] ?? $e['category'];
+      $total     = round((float)($b['total'] ?? $e['total']), 2);
+      $paidBy    = (int)($b['paid_by_member_id'] ?? $e['paid_by_member_id']);
+      $splitMode = $b['split_mode'] ?? $e['split_mode'];
+      $shares    = $b['shares'] ?? [];
+      $notes     = array_key_exists('notes', $b) ? $b['notes'] : $e['notes'];
       if ($total <= 0 || !$title) json_response(['error' => 'Dati non validi'], 400);
 
       $pdo = db();
       $pdo->beginTransaction();
       try {
-        $u = $pdo->prepare("UPDATE expense SET title = ?, category = ?, total = ?, notes = ? WHERE id = ?");
-        $u->execute([$title, $category, $total, $notes, $id]);
+        $u = $pdo->prepare("UPDATE expense SET title = ?, category = ?, total = ?, paid_by_member_id = ?, split_mode = ?, notes = ? WHERE id = ?");
+        $u->execute([$title, $category, $total, $paidBy, $splitMode, $notes, $id]);
 
-        // Se è una spesa personale (single share), aggiorno anche la quota
-        $cnt = $pdo->prepare("SELECT COUNT(*) AS n FROM expense_share WHERE expense_id = ?");
-        $cnt->execute([$id]);
-        if ((int)$cnt->fetch()['n'] === 1) {
-          $us = $pdo->prepare("UPDATE expense_share SET amount = ? WHERE expense_id = ?");
-          $us->execute([$total, $id]);
+        // Ricostruisco le quote da zero
+        $pdo->prepare("DELETE FROM expense_share WHERE expense_id = ?")->execute([$id]);
+        if ($splitMode === 'equal') {
+          $ids = $b['member_ids'] ?? [];
+          if (!$ids) {
+            $ids = array_map(fn($r) => (int)$r['id'], $pdo->query("SELECT id FROM member WHERE trip_id = 1")->fetchAll());
+          }
+          $n = count($ids);
+          if ($n === 0) throw new Exception('Nessun partecipante');
+          $base = floor(($total * 100) / $n);
+          $remainder = round($total * 100) - $base * $n;
+          $shareStmt = $pdo->prepare("INSERT INTO expense_share (expense_id, member_id, amount) VALUES (?, ?, ?)");
+          foreach ($ids as $i => $mid) {
+            $cents = $base + ($i < $remainder ? 1 : 0);
+            $shareStmt->execute([$id, (int)$mid, $cents / 100]);
+          }
+        } else if ($splitMode === 'custom' || $splitMode === 'items') {
+          $sum = 0;
+          $shareStmt = $pdo->prepare("INSERT INTO expense_share (expense_id, member_id, amount, label) VALUES (?, ?, ?, ?)");
+          foreach ($shares as $s) {
+            $amt = round((float)$s['amount'], 2);
+            $sum += $amt;
+            $shareStmt->execute([$id, (int)$s['member_id'], $amt, $s['label'] ?? null]);
+          }
+          if (abs($sum - $total) > 0.05) {
+            throw new Exception("La somma delle quote (€" . number_format($sum, 2) . ") non corrisponde al totale (€" . number_format($total, 2) . ")");
+          }
+        } else {
+          throw new Exception('split_mode non valido');
         }
         $pdo->commit();
         json_response(['ok' => true]);
