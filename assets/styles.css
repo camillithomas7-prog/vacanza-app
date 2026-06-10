@@ -171,23 +171,23 @@ h1, h2, h3, h4 {
 
 .login-hero { text-align: center; margin-bottom: 26px; }
 .login-emoji {
-  width: 54px; height: 54px;
+  width: 92px; height: 92px;
   margin: 0 auto 16px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-3));
+  border-radius: 22px;
+  background: #04140C;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0;
   position: relative;
-  box-shadow: 0 0 28px -2px rgba(74, 222, 128, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 30px -2px rgba(74, 222, 128, 0.55), inset 0 0 0 1px rgba(74, 222, 128, 0.35);
 }
-.login-emoji::before {
-  content: 'V';
-  font-size: 28px;
-  font-weight: 700;
-  color: #04140C;
-  letter-spacing: -0.04em;
+.login-emoji img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
 }
 
 .login-hero h1 {

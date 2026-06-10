@@ -29,7 +29,7 @@ header('Cache-Control: no-cache, must-revalidate');
     <div class="login-screen">
       <div class="login-card">
         <div class="login-hero">
-          <div class="login-emoji">🏝️</div>
+          <div class="login-emoji"><img src="assets/logo.gif?v=<?= @filemtime(__DIR__ . '/assets/logo.gif') ?: time() ?>" alt="" /></div>
           <h1 id="loginTripName">Vacanza</h1>
           <p class="muted">Tocca il tuo nome per entrare</p>
         </div>
