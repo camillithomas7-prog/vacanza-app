@@ -2251,11 +2251,20 @@ function openDarts() {
   // ============ PARTITA ============
   function renderGame() {
     const cur = game.players[game.turn];
+    // Classifica live: punteggio più basso = più vicino a vincere
+    const order = game.players.map((p, i) => ({ i, score: p.score })).sort((a, b) => a.score - b.score);
+    const rankOf = {};
+    let r = 0, prev = null;
+    order.forEach((o, idx) => { if (prev === null || o.score !== prev) { r = idx + 1; prev = o.score; } rankOf[o.i] = r; });
+    const started = game.players.some(p => p.throws.length);
+    const leaderIdx = (started && order.length > 1 && order[0].score < order[1].score) ? order[0].i : -1;
+
     overlay.innerHTML = `
       <div class="darts-sheet">
         <div class="darts-top">
           <div class="darts-title">🎯 ${game.start}</div>
           <div class="row gap">
+            <button class="icon-btn" id="dChart" title="Grafico partita">📈</button>
             <button class="icon-btn" id="dUndo" title="Annulla ultimo tiro">↺</button>
             <button class="icon-btn" id="dNew" title="Nuova partita">⟲</button>
             <button class="icon-btn" data-x aria-label="Chiudi">✕</button>
@@ -2265,6 +2274,7 @@ function openDarts() {
           <div class="darts-winner">
             <div class="dw-trophy">🏆</div>
             <div><b>${escapeHtml(game.players[game.winner].name)}</b> ha vinto!</div>
+            <button class="btn ghost" id="dWinChart">📈 Vedi grafico</button>
             <button class="btn primary" id="dWinNew">Nuova partita</button>
           </div>` : ''}
         <div class="darts-scroll">
@@ -2272,7 +2282,9 @@ function openDarts() {
             ${game.players.map((p, i) => {
               const active = i === game.turn && game.winner == null;
               const last = p.throws.length ? p.throws[p.throws.length - 1] : null;
+              const badge = i === leaderIdx ? '👑' : `${rankOf[i]}°`;
               return `<div class="darts-player ${active ? 'active' : ''} ${p.score === 0 ? 'won' : ''}">
+                <span class="dp-rank ${i === leaderIdx ? 'leader' : ''}">${badge}</span>
                 ${avatarHTML(p, 34)}
                 <div class="dp-name">${escapeHtml(p.name)}${last != null ? `<span class="dp-last">ultimo −${last}</span>` : ''}</div>
                 <div class="dp-score">${p.score}</div>
@@ -2309,11 +2321,14 @@ function openDarts() {
 
     overlay.querySelector('[data-x]').onclick = close;
     overlay.querySelector('#dUndo').onclick = undo;
+    overlay.querySelector('#dChart').onclick = () => openDartsChart(game);
     overlay.querySelector('#dNew').onclick = () => {
       if (confirm('Iniziare una nuova partita? Quella attuale verrà persa.')) { game.active = false; renderSetup(); }
     };
     const winNew = overlay.querySelector('#dWinNew');
     if (winNew) winNew.onclick = () => { game.active = false; renderSetup(); };
+    const winChart = overlay.querySelector('#dWinChart');
+    if (winChart) winChart.onclick = () => openDartsChart(game);
 
     if (game.winner == null) {
       let darts = [];   // i 3 tiri di questo turno
@@ -2381,6 +2396,64 @@ function openDarts() {
   }
 
   paint();
+}
+
+// ---- Grafico andamento partita (SVG, nessuna libreria) ----
+function dartsChartSVG(game) {
+  const W = 320, H = 170, padL = 6, padR = 6, padT = 10, padB = 8;
+  const start = game.start || 1;
+  const maxThrows = Math.max(1, ...game.players.map(p => p.throws.length));
+  const x = (i) => padL + (i / maxThrows) * (W - padL - padR);
+  const y = (sc) => padT + (1 - sc / start) * (H - padT - padB);
+
+  const baseY = y(0).toFixed(1);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" class="dchart-svg" preserveAspectRatio="none">`;
+  // griglia: linee orizzontali a 25/50/75/100%
+  [0.25, 0.5, 0.75].forEach(f => {
+    const gy = (padT + f * (H - padT - padB)).toFixed(1);
+    svg += `<line x1="${padL}" y1="${gy}" x2="${W - padR}" y2="${gy}" class="dchart-grid"/>`;
+  });
+  // linea zero (traguardo)
+  svg += `<line x1="${padL}" y1="${baseY}" x2="${W - padR}" y2="${baseY}" class="dchart-zero"/>`;
+
+  game.players.forEach((p, idx) => {
+    const col = avatarColor(p.id || idx + 1);
+    let s = start;
+    const series = [start];
+    p.throws.forEach(t => { s -= t; series.push(s); });
+    const d = series.map((sc, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)} ${y(sc).toFixed(1)}`).join(' ');
+    svg += `<path d="${d}" fill="none" stroke="${col}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" opacity="${p.score === 0 ? 1 : .92}"/>`;
+    const lx = x(series.length - 1).toFixed(1), ly = y(series[series.length - 1]).toFixed(1);
+    svg += `<circle cx="${lx}" cy="${ly}" r="${p.score === 0 ? 4.5 : 3.2}" fill="${col}"/>`;
+  });
+  svg += `</svg>`;
+  return svg;
+}
+
+function openDartsChart(game) {
+  const ranked = game.players.map((p, i) => ({ p, i })).sort((a, b) => a.p.score - b.p.score);
+  const html = `
+    <h2>📈 Andamento partita</h2>
+    <div class="dchart">${dartsChartSVG(game)}</div>
+    <div class="dchart-axis"><span>${game.start}</span><span>traguardo 0</span></div>
+    <div class="darts-rank">
+      ${ranked.map(({ p, i }, idx) => {
+        const col = avatarColor(p.id || i + 1);
+        const won = p.score === 0;
+        return `<div class="dr-row ${won ? 'won' : ''}">
+          <span class="dr-pos">${won ? '🏆' : (idx + 1) + '°'}</span>
+          <span class="dr-dot" style="background:${col}"></span>
+          <span class="dr-name">${escapeHtml(p.name)}</span>
+          <span class="dr-thrown">${p.throws.length} turni</span>
+          <span class="dr-score">${p.score}</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <button class="btn primary full" id="dChartClose" style="margin-top:14px">Chiudi</button>`;
+  const bg = openModal(html, (modal, close) => {
+    modal.querySelector('#dChartClose').onclick = close;
+  });
+  bg.style.zIndex = 140; // sopra l'overlay del gioco (z-index 120)
 }
 
 // ============ START ============
