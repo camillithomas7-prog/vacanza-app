@@ -364,6 +364,20 @@ function viewHome() {
     }
   }
 
+  // ===== Gioco Freccette =====
+  const dartsCard = document.createElement('button');
+  dartsCard.className = 'card darts-launch';
+  const dg = dartsLoad();
+  dartsCard.innerHTML = `
+    <div class="dl-ico">🎯</div>
+    <div class="dl-text">
+      <div class="dl-title">Freccette</div>
+      <div class="dl-sub">${dg && dg.active ? 'Partita in corso · tocca per continuare' : 'Sfida il gruppo · scala i punti fino a zero'}</div>
+    </div>
+    <div class="dl-arrow">›</div>`;
+  dartsCard.addEventListener('click', () => openDarts());
+  wrap.appendChild(dartsCard);
+
   // Trip header info
   const trip = state.trip;
   if (trip.destination || trip.date_start) {
@@ -2118,6 +2132,210 @@ function initBgFx() {
   });
   if (reduce) { draw(); }   // disegno statico
   else start();
+}
+
+// ============ GIOCO FRECCETTE (DARTS) ============
+const DARTS_KEY = 'vacanza_darts_v1';
+
+function dartsLoad() {
+  try { return JSON.parse(localStorage.getItem(DARTS_KEY)) || null; } catch (e) { return null; }
+}
+function dartsSave(g) {
+  if (g) localStorage.setItem(DARTS_KEY, JSON.stringify(g));
+  else localStorage.removeItem(DARTS_KEY);
+}
+
+function openDarts() {
+  const overlay = document.createElement('div');
+  overlay.className = 'darts-overlay';
+  document.body.appendChild(overlay);
+  const close = () => { overlay.remove(); if (state.route === 'home') render(); };
+
+  let game = dartsLoad();
+
+  // ---- stato setup ----
+  let setupStart = (game && game.start) || 301;
+  let setupPlayers = (game && !game.active && game.players)
+    ? game.players.map(p => ({ name: p.name, avatar: p.avatar || null, id: p.id || null }))
+    : [];
+
+  const paint = () => { (game && game.active) ? renderGame() : renderSetup(); };
+
+  // ============ SETUP ============
+  function renderSetup() {
+    const preset = [301, 501, 701];
+    overlay.innerHTML = `
+      <div class="darts-sheet">
+        <div class="darts-top">
+          <div class="darts-title">🎯 Freccette</div>
+          <button class="icon-btn" data-x aria-label="Chiudi">✕</button>
+        </div>
+        <div class="darts-scroll">
+          <div class="darts-section-lbl">Punti a partita</div>
+          <div class="darts-chips">
+            ${preset.map(v => `<button class="darts-chip ${setupStart === v ? 'active' : ''}" data-start="${v}">${v}</button>`).join('')}
+            <input class="darts-chip-input" id="dStartCustom" inputmode="numeric" placeholder="Altro" value="${preset.includes(setupStart) ? '' : setupStart}" />
+          </div>
+
+          <div class="darts-section-lbl">Giocatori <span class="muted">· ${setupPlayers.length}</span></div>
+          <div class="darts-members">
+            ${state.members.map(m => {
+              const on = setupPlayers.some(p => p.name === m.name);
+              return `<button class="darts-member ${on ? 'on' : ''}" data-mname="${escapeHtml(m.name)}">${avatarHTML(m, 36)}<span>${escapeHtml(m.name)}</span></button>`;
+            }).join('')}
+          </div>
+
+          <div class="darts-add">
+            <input id="dCustomName" placeholder="Aggiungi un altro giocatore..." autocomplete="off" />
+            <button class="btn ghost" id="dAddBtn">＋</button>
+          </div>
+          ${setupPlayers.filter(p => !state.members.some(m => m.name === p.name)).map(p =>
+            `<div class="darts-guest"><span>👤 ${escapeHtml(p.name)}</span><button data-rm="${escapeHtml(p.name)}" aria-label="Rimuovi">✕</button></div>`
+          ).join('')}
+        </div>
+        <div class="darts-foot">
+          <button class="btn primary full lg" id="dStart" ${setupPlayers.length < 2 ? 'disabled' : ''}>
+            ${setupPlayers.length < 2 ? 'Scegli almeno 2 giocatori' : `Inizia partita · ${setupStart}`}
+          </button>
+        </div>
+      </div>`;
+
+    overlay.querySelector('[data-x]').onclick = close;
+    overlay.querySelectorAll('[data-start]').forEach(b => b.onclick = () => { setupStart = +b.dataset.start; renderSetup(); });
+    const ci = overlay.querySelector('#dStartCustom');
+    ci.oninput = () => { const v = parseInt(ci.value, 10); if (v > 0) setupStart = v; };
+    ci.onblur = () => renderSetup();
+    overlay.querySelectorAll('[data-mname]').forEach(b => b.onclick = () => {
+      const name = b.dataset.mname;
+      const i = setupPlayers.findIndex(p => p.name === name);
+      if (i >= 0) setupPlayers.splice(i, 1);
+      else { const m = state.members.find(x => x.name === name); setupPlayers.push({ name, avatar: m?.avatar || null, id: m?.id || null }); }
+      renderSetup();
+    });
+    const addCustom = () => {
+      const inp = overlay.querySelector('#dCustomName');
+      const n = (inp.value || '').trim();
+      if (!n) return;
+      if (setupPlayers.some(p => p.name === n)) { toast('Giocatore già aggiunto', true); return; }
+      setupPlayers.push({ name: n, avatar: null, id: null });
+      renderSetup();
+    };
+    overlay.querySelector('#dAddBtn').onclick = addCustom;
+    overlay.querySelector('#dCustomName').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } };
+    overlay.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
+      const i = setupPlayers.findIndex(p => p.name === b.dataset.rm);
+      if (i >= 0) setupPlayers.splice(i, 1);
+      renderSetup();
+    });
+    overlay.querySelector('#dStart').onclick = () => {
+      if (setupPlayers.length < 2) return;
+      game = {
+        active: true, start: setupStart, turn: 0, winner: null, log: [],
+        players: setupPlayers.map(p => ({ name: p.name, avatar: p.avatar, id: p.id, score: setupStart, throws: [] })),
+      };
+      dartsSave(game);
+      renderGame();
+    };
+  }
+
+  // ============ PARTITA ============
+  function renderGame() {
+    const cur = game.players[game.turn];
+    overlay.innerHTML = `
+      <div class="darts-sheet">
+        <div class="darts-top">
+          <div class="darts-title">🎯 ${game.start}</div>
+          <div class="row gap">
+            <button class="icon-btn" id="dUndo" title="Annulla ultimo tiro">↺</button>
+            <button class="icon-btn" id="dNew" title="Nuova partita">⟲</button>
+            <button class="icon-btn" data-x aria-label="Chiudi">✕</button>
+          </div>
+        </div>
+        ${game.winner != null ? `
+          <div class="darts-winner">
+            <div class="dw-trophy">🏆</div>
+            <div><b>${escapeHtml(game.players[game.winner].name)}</b> ha vinto!</div>
+            <button class="btn primary" id="dWinNew">Nuova partita</button>
+          </div>` : ''}
+        <div class="darts-scroll">
+          <div class="darts-players">
+            ${game.players.map((p, i) => {
+              const active = i === game.turn && game.winner == null;
+              const last = p.throws.length ? p.throws[p.throws.length - 1] : null;
+              return `<div class="darts-player ${active ? 'active' : ''} ${p.score === 0 ? 'won' : ''}">
+                ${avatarHTML(p, 34)}
+                <div class="dp-name">${escapeHtml(p.name)}${last != null ? `<span class="dp-last">ultimo −${last}</span>` : ''}</div>
+                <div class="dp-score">${p.score}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+        ${game.winner == null ? `
+        <div class="darts-foot">
+          <div class="darts-current">Turno di <b>${escapeHtml(cur.name)}</b> — gli restano <b>${cur.score}</b></div>
+          <div class="darts-input-display" id="dDisp">0</div>
+          <div class="darts-keypad">
+            ${[1,2,3,4,5,6,7,8,9].map(n => `<button class="dkey" data-k="${n}">${n}</button>`).join('')}
+            <button class="dkey" data-k="back">⌫</button>
+            <button class="dkey" data-k="0">0</button>
+            <button class="dkey ok" data-k="ok">OK</button>
+          </div>
+        </div>` : ''}
+      </div>`;
+
+    overlay.querySelector('[data-x]').onclick = close;
+    overlay.querySelector('#dUndo').onclick = undo;
+    overlay.querySelector('#dNew').onclick = () => {
+      if (confirm('Iniziare una nuova partita? Quella attuale verrà persa.')) { game.active = false; renderSetup(); }
+    };
+    const winNew = overlay.querySelector('#dWinNew');
+    if (winNew) winNew.onclick = () => { game.active = false; renderSetup(); };
+
+    if (game.winner == null) {
+      let buf = '0';
+      const disp = overlay.querySelector('#dDisp');
+      overlay.querySelectorAll('.dkey').forEach(k => k.onclick = () => {
+        const key = k.dataset.k;
+        if (key === 'ok') { submit(parseInt(buf, 10) || 0); return; }
+        if (key === 'back') buf = buf.length > 1 ? buf.slice(0, -1) : '0';
+        else { buf = buf === '0' ? key : (buf + key); if (+buf > 180) buf = '180'; }
+        disp.textContent = buf;
+      });
+    }
+  }
+
+  function submit(points) {
+    if (points < 0 || points > 180) { toast('Max 180 punti per turno', true); return; }
+    const pi = game.turn;
+    const p = game.players[pi];
+    const remaining = p.score - points;
+    let busted = false;
+    if (remaining < 0) {
+      busted = true;
+      toast(`Sballato! ${p.name} resta a ${p.score}`, true);
+    } else {
+      p.score = remaining;
+      p.throws.push(points);
+      if (remaining === 0) game.winner = pi;
+    }
+    game.log.push({ pi, points, busted });
+    if (game.winner == null) game.turn = (game.turn + 1) % game.players.length;
+    dartsSave(game);
+    renderGame();
+  }
+
+  function undo() {
+    if (!game.log.length) { toast('Niente da annullare'); return; }
+    const mv = game.log.pop();
+    const p = game.players[mv.pi];
+    if (!mv.busted) { p.score += mv.points; p.throws.pop(); }
+    game.winner = null;
+    game.turn = mv.pi;
+    dartsSave(game);
+    renderGame();
+  }
+
+  paint();
 }
 
 // ============ START ============

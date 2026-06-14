@@ -1126,3 +1126,109 @@ h1, h2, h3, h4 {
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* ============ GIOCO FRECCETTE ============ */
+.darts-launch {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  text-align: left; cursor: pointer; margin-bottom: 14px;
+}
+.darts-launch .dl-ico { font-size: 30px; line-height: 1; filter: drop-shadow(0 0 12px rgba(74,222,128,.35)); }
+.darts-launch .dl-text { flex: 1; min-width: 0; }
+.darts-launch .dl-title { font-weight: 600; font-size: 16px; color: var(--text); }
+.darts-launch .dl-sub { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
+.darts-launch .dl-arrow { font-size: 24px; color: var(--text-faint); }
+.darts-launch:active { transform: scale(.99); }
+
+.darts-overlay {
+  position: fixed; inset: 0; z-index: 120;
+  background: rgba(2,5,8,.86); backdrop-filter: blur(14px);
+  display: flex; align-items: stretch; justify-content: center;
+}
+.darts-sheet {
+  width: 100%; max-width: 520px; height: 100dvh;
+  background: var(--bg-2); display: flex; flex-direction: column;
+}
+.darts-top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: calc(14px + env(safe-area-inset-top)) 16px 12px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.darts-title { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+.darts-top .icon-btn { font-size: 15px; }
+.darts-scroll { flex: 1; overflow-y: auto; padding: 16px; -webkit-overflow-scrolling: touch; }
+.darts-foot {
+  padding: 14px 16px calc(16px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border); background: var(--bg-2); flex-shrink: 0;
+}
+
+.darts-section-lbl {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-faint); margin: 4px 0 10px; font-weight: 600;
+}
+.darts-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
+.darts-chip {
+  flex: 1; min-width: 60px; padding: 14px 0; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text); font-weight: 600; font-size: 16px; cursor: pointer;
+}
+.darts-chip.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.darts-chip-input {
+  flex: 1; min-width: 60px; padding: 14px 10px; border-radius: 12px;
+  border: 1px solid var(--border); background: transparent; color: var(--text);
+  text-align: center; font-size: 15px;
+}
+.darts-members { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
+.darts-member {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border-radius: 12px; border: 1px solid var(--border); background: transparent;
+  color: var(--text); cursor: pointer; font-size: 14px; text-align: left;
+}
+.darts-member span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.darts-member.on { border-color: var(--accent); background: var(--accent-soft); }
+.darts-add { display: flex; gap: 8px; margin-bottom: 10px; }
+.darts-add input {
+  flex: 1; padding: 12px 14px; border-radius: 12px;
+  border: 1px solid var(--border); background: transparent; color: var(--text);
+}
+.darts-add .btn { padding: 0 18px; font-size: 20px; }
+.darts-guest {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 12px; border-radius: 10px; background: var(--surface-2);
+  margin-bottom: 6px; font-size: 14px;
+}
+.darts-guest button { background: none; border: none; color: var(--text-faint); font-size: 14px; cursor: pointer; padding: 4px; }
+
+.darts-players { display: flex; flex-direction: column; gap: 10px; }
+.darts-player {
+  display: flex; align-items: center; gap: 12px; padding: 13px 16px;
+  border-radius: 14px; border: 1px solid var(--border); background: var(--surface-2); transition: .15s;
+}
+.darts-player.active {
+  border-color: var(--accent); background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent), 0 0 24px rgba(74,222,128,.12);
+}
+.darts-player.won { border-color: #C29550; }
+.darts-player .dp-name { flex: 1; font-weight: 500; font-size: 15px; min-width: 0; }
+.darts-player .dp-last { font-size: 11px; color: var(--text-faint); margin-left: 8px; }
+.darts-player .dp-score { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.darts-player.active .dp-score { color: var(--accent); }
+
+.darts-current { text-align: center; font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+.darts-input-display {
+  text-align: center; font-size: 42px; font-weight: 700;
+  font-variant-numeric: tabular-nums; margin-bottom: 12px; min-height: 50px; color: var(--text);
+}
+.darts-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.dkey {
+  padding: 16px 0; border-radius: 12px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font-size: 20px; font-weight: 600; cursor: pointer;
+}
+.dkey:active { background: var(--accent-soft); transform: scale(.97); }
+.dkey.ok { background: var(--accent); color: #04140A; border-color: var(--accent); }
+
+.darts-winner {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 22px 16px; text-align: center; font-size: 19px;
+  border-bottom: 1px solid var(--border);
+}
+.darts-winner .dw-trophy { font-size: 44px; filter: drop-shadow(0 0 16px rgba(194,149,80,.5)); }
