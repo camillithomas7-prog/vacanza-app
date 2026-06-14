@@ -2154,6 +2154,14 @@ function dartsSave(g) {
   if (g) localStorage.setItem(DARTS_KEY, JSON.stringify(g));
   else localStorage.removeItem(DARTS_KEY);
 }
+// Backup di sicurezza: salva una partita prima di azzerarla/sovrascriverla
+const DARTS_BACKUP_KEY = 'vacanza_darts_backup_v1';
+function dartsBackupSave(g) {
+  if (g && g.players && g.players.length) localStorage.setItem(DARTS_BACKUP_KEY, JSON.stringify(g));
+}
+function dartsBackupLoad() {
+  try { return JSON.parse(localStorage.getItem(DARTS_BACKUP_KEY)) || null; } catch (e) { return null; }
+}
 
 function openDarts() {
   const overlay = document.createElement('div');
@@ -2174,6 +2182,8 @@ function openDarts() {
   // ============ SETUP ============
   function renderSetup() {
     const preset = [301, 501, 701];
+    const bk = dartsBackupLoad();
+    const bkInfo = bk ? `${bk.players.map(p => p.name).join(', ')} · ${bk.start}` : '';
     overlay.innerHTML = `
       <div class="darts-sheet">
         <div class="darts-top">
@@ -2181,6 +2191,10 @@ function openDarts() {
           <button class="icon-btn" data-x aria-label="Chiudi">✕</button>
         </div>
         <div class="darts-scroll">
+          ${bk ? `<button class="darts-restore" id="dRestore">
+            <span class="dr-ic">↩︎</span>
+            <span class="dr-tx"><b>Ripristina partita precedente</b><small>${escapeHtml(bkInfo)}</small></span>
+          </button>` : ''}
           <div class="darts-section-lbl">Punti a partita</div>
           <div class="darts-chips">
             ${preset.map(v => `<button class="darts-chip ${setupStart === v ? 'active' : ''}" data-start="${v}">${v}</button>`).join('')}
@@ -2211,6 +2225,14 @@ function openDarts() {
       </div>`;
 
     overlay.querySelector('[data-x]').onclick = close;
+    const restoreBtn = overlay.querySelector('#dRestore');
+    if (restoreBtn) restoreBtn.onclick = () => {
+      const b = dartsBackupLoad();
+      if (!b) { toast('Nessuna partita da ripristinare', true); return; }
+      game = Object.assign({}, b, { active: true });
+      dartsSave(game);
+      renderGame();
+    };
     overlay.querySelectorAll('[data-start]').forEach(b => b.onclick = () => { setupStart = +b.dataset.start; renderSetup(); });
     const ci = overlay.querySelector('#dStartCustom');
     ci.oninput = () => { const v = parseInt(ci.value, 10); if (v > 0) setupStart = v; };
@@ -2239,6 +2261,9 @@ function openDarts() {
     });
     overlay.querySelector('#dStart').onclick = () => {
       if (setupPlayers.length < 2) return;
+      // Se c'è una partita con tiri già fatti, salvala come backup prima di sovrascriverla
+      const prev = dartsLoad();
+      if (prev && prev.players && prev.players.some(p => p.throws && p.throws.length)) dartsBackupSave(prev);
       game = {
         active: true, start: setupStart, turn: 0, winner: null, log: [],
         players: setupPlayers.map(p => ({ name: p.name, avatar: p.avatar, id: p.id, score: setupStart, throws: [] })),
@@ -2323,10 +2348,10 @@ function openDarts() {
     overlay.querySelector('#dUndo').onclick = undo;
     overlay.querySelector('#dChart').onclick = () => openDartsChart(game);
     overlay.querySelector('#dNew').onclick = () => {
-      if (confirm('Iniziare una nuova partita? Quella attuale verrà persa.')) { game.active = false; renderSetup(); }
+      if (confirm('Iniziare una nuova partita? Quella attuale verrà persa.')) { dartsBackupSave(game); game.active = false; renderSetup(); }
     };
     const winNew = overlay.querySelector('#dWinNew');
-    if (winNew) winNew.onclick = () => { game.active = false; renderSetup(); };
+    if (winNew) winNew.onclick = () => { dartsBackupSave(game); game.active = false; renderSetup(); };
     const winChart = overlay.querySelector('#dWinChart');
     if (winChart) winChart.onclick = () => openDartsChart(game);
 
