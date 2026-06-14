@@ -2282,13 +2282,27 @@ function openDarts() {
         </div>
         ${game.winner == null ? `
         <div class="darts-foot">
-          <div class="darts-current">Turno di <b>${escapeHtml(cur.name)}</b> — gli restano <b>${cur.score}</b></div>
-          <div class="darts-input-display" id="dDisp">0</div>
-          <div class="darts-keypad">
-            ${[1,2,3,4,5,6,7,8,9].map(n => `<button class="dkey" data-k="${n}">${n}</button>`).join('')}
-            <button class="dkey" data-k="back">⌫</button>
-            <button class="dkey" data-k="0">0</button>
-            <button class="dkey ok" data-k="ok">OK</button>
+          <div class="darts-current">Turno di <b>${escapeHtml(cur.name)}</b> — gli restano <b>${cur.score}</b> · 3 tiri</div>
+          <div class="dthrow">
+            <span class="dslot" data-i="0">–</span>
+            <span class="dslot" data-i="1">–</span>
+            <span class="dslot" data-i="2">–</span>
+            <span class="dtot">tot <b id="dSum">0</b></span>
+          </div>
+          <div class="dmult">
+            <button class="dm active" data-m="1">Singolo</button>
+            <button class="dm" data-m="2">Doppio ×2</button>
+            <button class="dm" data-m="3">Triplo ×3</button>
+          </div>
+          <div class="dboard">
+            ${Array.from({ length: 20 }, (_, i) => i + 1).map(n => `<button class="dnum" data-v="${n}">${n}</button>`).join('')}
+            <button class="dnum dbull" data-v="25" data-fixed>25</button>
+            <button class="dnum dbull" data-v="50" data-fixed>Bull 50</button>
+            <button class="dnum dmiss" data-v="0" data-fixed>Miss</button>
+          </div>
+          <div class="drow">
+            <button class="btn ghost" id="dBack">⌫ Annulla tiro</button>
+            <button class="btn primary" id="dOk">Conferma</button>
           </div>
         </div>` : ''}
       </div>`;
@@ -2302,15 +2316,36 @@ function openDarts() {
     if (winNew) winNew.onclick = () => { game.active = false; renderSetup(); };
 
     if (game.winner == null) {
-      let buf = '0';
-      const disp = overlay.querySelector('#dDisp');
-      overlay.querySelectorAll('.dkey').forEach(k => k.onclick = () => {
-        const key = k.dataset.k;
-        if (key === 'ok') { submit(parseInt(buf, 10) || 0); return; }
-        if (key === 'back') buf = buf.length > 1 ? buf.slice(0, -1) : '0';
-        else { buf = buf === '0' ? key : (buf + key); if (+buf > 180) buf = '180'; }
-        disp.textContent = buf;
+      let darts = [];   // i 3 tiri di questo turno
+      let mult = 1;     // moltiplicatore selezionato (Singolo/Doppio/Triplo)
+      const slots = overlay.querySelectorAll('.dslot');
+      const sumEl = overlay.querySelector('#dSum');
+      const multBtns = overlay.querySelectorAll('.dm');
+
+      function refresh() {
+        slots.forEach((s, i) => {
+          const has = darts[i] != null;
+          s.textContent = has ? (darts[i] === 0 ? '✗' : darts[i]) : '–';
+          s.classList.toggle('filled', has);
+        });
+        sumEl.textContent = darts.reduce((a, b) => a + b, 0);
+        multBtns.forEach(b => b.classList.toggle('active', +b.dataset.m === mult));
+      }
+
+      multBtns.forEach(b => b.onclick = () => { mult = +b.dataset.m; refresh(); });
+
+      overlay.querySelectorAll('.dnum').forEach(b => b.onclick = () => {
+        if (darts.length >= 3) { toast('Hai già fatto 3 tiri — premi Conferma', true); return; }
+        const base = +b.dataset.v;
+        const val = b.hasAttribute('data-fixed') ? base : base * mult; // 25/50/Miss senza moltiplicatore
+        darts.push(val);
+        mult = 1; // si riparte da Singolo dopo ogni freccia
+        refresh();
       });
+
+      overlay.querySelector('#dBack').onclick = () => { darts.pop(); mult = 1; refresh(); };
+      overlay.querySelector('#dOk').onclick = () => submit(darts.reduce((a, b) => a + b, 0));
+      refresh();
     }
   }
 
