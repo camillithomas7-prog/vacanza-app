@@ -161,6 +161,7 @@ async function renderLogin() {
   const app = $('#app');
   app.innerHTML = $('#tpl-login').innerHTML;
   const { members } = await api('members_public');
+  state.members = members; // serve al gioco Freccette anche prima del login
   const { trip } = await api('trip').catch(() => ({ trip: null }));
   if (trip) $('#loginTripName').textContent = trip.name;
   const grid = $('#memberGrid');
@@ -170,6 +171,15 @@ async function renderLogin() {
       <b>${m.name}</b>
     </button>
   `).join('');
+
+  // Pulsante gioco Freccette (giocabile direttamente dalla schermata iniziale)
+  const dg = dartsLoad();
+  const dartsBtn = document.createElement('button');
+  dartsBtn.className = 'login-darts';
+  dartsBtn.innerHTML = `<span class="ld-ico">🎯</span><span class="ld-txt"><b>Freccette</b><small>${dg && dg.active ? 'Partita in corso · tocca per continuare' : 'Sfida il gruppo · scala i punti a zero'}</small></span><span class="ld-arrow">›</span>`;
+  dartsBtn.addEventListener('click', () => openDarts());
+  grid.insertAdjacentElement('afterend', dartsBtn);
+
   grid.querySelectorAll('.member-tile').forEach(btn => {
     btn.addEventListener('click', async () => {
       const id = +btn.dataset.id;
