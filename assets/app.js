@@ -2565,6 +2565,10 @@ function openPoker() {
           <button class="icon-btn" data-x aria-label="Chiudi">✕</button>
         </div>
         <div class="darts-scroll">
+          ${state.me ? `<button class="darts-restore pk-ledger-btn" id="pLedger">
+            <span class="dr-ic">👥</span>
+            <span class="dr-tx"><b>Saldi del gruppo</b><small>Chi ha saldato · segna i pagamenti</small></span>
+          </button>` : ''}
           ${bk ? `<button class="darts-restore" id="pRestore">
             <span class="dr-ic">↩︎</span>
             <span class="dr-tx"><b>Riapri partita precedente</b><small>${escapeHtml(bkInfo)}</small></span>
@@ -2599,6 +2603,8 @@ function openPoker() {
       </div>`;
 
     overlay.querySelector('[data-x]').onclick = close;
+    const ledgerBtn = overlay.querySelector('#pLedger');
+    if (ledgerBtn) ledgerBtn.onclick = () => openPokerLedger();
     const restoreBtn = overlay.querySelector('#pRestore');
     if (restoreBtn) restoreBtn.onclick = () => {
       const b = pokerBackupLoad();
@@ -2661,6 +2667,7 @@ function openPoker() {
         <div class="darts-top">
           <div class="darts-title">🃏 ${fmt(game.quota)}<span class="pk-perhand">/mano</span></div>
           <div class="row gap">
+            ${state.me ? '<button class="icon-btn" id="pLedger2" title="Saldi del gruppo">👥</button>' : ''}
             <button class="icon-btn" id="pSettle" title="Chi paga chi">💰</button>
             <button class="icon-btn" id="pUndo" title="Annulla ultima mano">↺</button>
             <button class="icon-btn" id="pNew" title="Nuova partita">⟲</button>
@@ -2704,6 +2711,8 @@ function openPoker() {
       </div>`;
 
     overlay.querySelector('[data-x]').onclick = close;
+    const lb2 = overlay.querySelector('#pLedger2');
+    if (lb2) lb2.onclick = () => openPokerLedger();
     overlay.querySelector('#pUndo').onclick = undo;
     overlay.querySelector('#pSettle').onclick = () => openPokerSettle(game);
     overlay.querySelector('#pNew').onclick = () => {
@@ -2784,11 +2793,111 @@ function openPokerSettle(game) {
         </div>`;
       }).join('')}
     </div>
-    <button class="btn primary full" id="pSettleClose" style="margin-top:14px">Chiudi</button>`;
+    ${state.me ? `<button class="btn primary full lg" id="pPublish" style="margin-top:14px">📤 Pubblica saldi nel gruppo</button>
+    <button class="btn ghost full" id="pOpenLedger" style="margin-top:8px">👥 Vedi saldi del gruppo</button>` : ''}
+    <button class="btn ghost full" id="pSettleClose" style="margin-top:8px">Chiudi</button>`;
   const bg = openModal(html, (modal, close) => {
     modal.querySelector('#pSettleClose').onclick = close;
+    const pub = modal.querySelector('#pPublish');
+    if (pub) pub.onclick = async () => {
+      pub.disabled = true; pub.textContent = 'Pubblico…';
+      try {
+        await api('poker_publish', {
+          quota: game.quota,
+          hands: game.log.length,
+          players: game.players.map(p => ({ member_id: p.id || null, name: p.name, net: p.net, won: p.won })),
+        });
+        toast('Saldi pubblicati nel gruppo ✓');
+        close();
+        openPokerLedger();
+      } catch (e) { toast(e.message, true); pub.disabled = false; pub.textContent = '📤 Pubblica saldi nel gruppo'; }
+    };
+    const ol = modal.querySelector('#pOpenLedger');
+    if (ol) ol.onclick = () => { close(); openPokerLedger(); };
   });
   bg.style.zIndex = 140;
+}
+
+// ===== Saldi Poker del gruppo (server, visibile da ogni profilo) =====
+async function openPokerLedger() {
+  if (!state.me) { toast('Accedi col tuo profilo per i saldi del gruppo', true); return; }
+  const overlay = document.createElement('div');
+  overlay.className = 'darts-overlay';
+  document.body.appendChild(overlay);
+  const close = () => { overlay.remove(); if (state.route === 'home') render(); };
+
+  async function load() {
+    overlay.innerHTML = `<div class="darts-sheet"><div class="darts-top"><div class="darts-title">👥 Saldi Poker</div><button class="icon-btn" data-x>✕</button></div><div class="darts-scroll"><div class="pk-loading">Carico…</div></div></div>`;
+    overlay.querySelector('[data-x]').onclick = close;
+    let data;
+    try { data = await api('poker_get'); } catch (e) { toast(e.message, true); return; }
+    paint(data);
+  }
+
+  function paint(data) {
+    const ledger = data.ledger || [];
+    const meta = data.meta || null;
+    const debtors = ledger.filter(r => r.net < -0.001);
+    const creditors = ledger.filter(r => r.net > 0.001);
+    const pendenti = debtors.filter(r => !r.paid).length;
+
+    overlay.innerHTML = `
+      <div class="darts-sheet">
+        <div class="darts-top">
+          <div class="darts-title">👥 Saldi Poker</div>
+          <button class="icon-btn" data-x aria-label="Chiudi">✕</button>
+        </div>
+        ${meta ? `<div class="pk-banner ${pendenti ? 'open' : 'closed'}">
+          <span class="pk-dot"></span>
+          ${pendenti ? `${pendenti} da saldare` : 'Tutti hanno saldato 🤝'}
+          <span class="pk-stat">${fmt(meta.quota)}/mano · ${meta.hands} man${+meta.hands === 1 ? 'o' : 'i'}</span>
+        </div>` : ''}
+        <div class="darts-scroll">
+          ${!ledger.length ? `<div class="pk-empty">Nessun saldo pubblicato.<br><small>Apri una partita, premi 💰 e poi <b>Pubblica saldi nel gruppo</b>.</small></div>` : `
+          ${creditors.length ? `<div class="darts-section-lbl">Vincitori · incassano</div>
+          <div class="darts-players" style="margin-bottom:18px">
+            ${creditors.map(r => `<div class="darts-player pk-pos">
+              ${avatarHTML(memOf(r), 34)}
+              <div class="dp-name">${escapeHtml(r.name)}${r.member_id == state.me.id ? ' <span class="pk-you">tu</span>' : ''}<span class="dp-last">🏆 ${r.won}</span></div>
+              <div class="dp-score pk-score">+${fmt(r.net).replace('€', '')}<small>€</small></div>
+            </div>`).join('')}
+          </div>` : ''}
+          ${debtors.length ? `<div class="darts-section-lbl">Devono pagare · tocca per segnare saldato</div>
+          <div class="darts-players">
+            ${debtors.map(r => `<button class="darts-player pk-debt ${r.paid ? 'pk-settled' : ''}" data-toggle="${r.id}">
+              ${avatarHTML(memOf(r), 34)}
+              <div class="dp-name">${escapeHtml(r.name)}${r.member_id == state.me.id ? ' <span class="pk-you">tu</span>' : ''}<span class="dp-last">${r.paid ? '✓ saldato' : 'da saldare'}</span></div>
+              <div class="pk-paidbox">${r.paid ? '<span class="pk-check">✓</span>' : `<span class="dp-score pk-score" style="color:var(--danger)">${fmt(r.net).replace('€', '')}<small>€</small></span>`}</div>
+            </button>`).join('')}
+          </div>` : ''}`}
+        </div>
+        ${ledger.length ? `<div class="darts-foot">
+          <button class="btn ghost full" id="pLedgerReset">🗑 Azzera saldi pubblicati</button>
+        </div>` : ''}
+      </div>`;
+
+    overlay.querySelector('[data-x]').onclick = close;
+    overlay.querySelectorAll('[data-toggle]').forEach(b => b.onclick = async () => {
+      const id = +b.dataset.toggle;
+      b.style.opacity = '.5';
+      try { await api('poker_toggle_paid', { id }); const d = await api('poker_get'); paint(d); }
+      catch (e) { toast(e.message, true); b.style.opacity = '1'; }
+    });
+    const rst = overlay.querySelector('#pLedgerReset');
+    if (rst) rst.onclick = async () => {
+      if (!confirm('Azzerare i saldi poker pubblicati nel gruppo?')) return;
+      try { await api('poker_reset'); paint({ ledger: [], meta: null }); toast('Saldi azzerati'); }
+      catch (e) { toast(e.message, true); }
+    };
+  }
+
+  // ritrova il membro (per avatar foto) dall'id, altrimenti usa nome/colore
+  function memOf(r) {
+    if (r.member_id) { const m = (state.members || []).find(x => x.id == r.member_id); if (m) return m; }
+    return { id: r.member_id || null, name: r.name, avatar: null };
+  }
+
+  load();
 }
 
 // ============ START ============

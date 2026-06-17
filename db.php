@@ -309,6 +309,25 @@ function create_schema_sqlite($pdo) {
     CREATE INDEX IF NOT EXISTS idx_menu_restaurant ON menu_item(restaurant_id);
     CREATE INDEX IF NOT EXISTS idx_dsession_trip ON dining_session(trip_id);
     CREATE INDEX IF NOT EXISTS idx_dorder_session ON dining_order(session_id);
+
+    CREATE TABLE IF NOT EXISTS poker_meta (
+      trip_id INTEGER PRIMARY KEY,
+      quota REAL NOT NULL DEFAULT 0,
+      hands INTEGER NOT NULL DEFAULT 0,
+      published_by_member_id INTEGER,
+      published_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS poker_ledger (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trip_id INTEGER NOT NULL DEFAULT 1,
+      member_id INTEGER,
+      name TEXT NOT NULL,
+      net REAL NOT NULL DEFAULT 0,
+      won INTEGER NOT NULL DEFAULT 0,
+      paid INTEGER NOT NULL DEFAULT 0,
+      paid_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_poker_ledger_trip ON poker_ledger(trip_id);
   ");
 }
 
@@ -444,6 +463,26 @@ function create_schema_mysql($pdo) {
       amount DECIMAL(10,2) NOT NULL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (session_id, member_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+    CREATE TABLE IF NOT EXISTS poker_meta (
+      trip_id INT PRIMARY KEY,
+      quota DECIMAL(10,2) NOT NULL DEFAULT 0,
+      hands INT NOT NULL DEFAULT 0,
+      published_by_member_id INT,
+      published_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+    CREATE TABLE IF NOT EXISTS poker_ledger (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      trip_id INT NOT NULL DEFAULT 1,
+      member_id INT,
+      name VARCHAR(120) NOT NULL,
+      net DECIMAL(10,2) NOT NULL DEFAULT 0,
+      won INT NOT NULL DEFAULT 0,
+      paid TINYINT NOT NULL DEFAULT 0,
+      paid_at DATETIME,
+      INDEX idx_poker_ledger_trip (trip_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   ");
 }

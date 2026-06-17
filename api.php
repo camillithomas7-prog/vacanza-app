@@ -836,6 +836,79 @@ try {
       json_response(['ok' => true]);
     }
 
+    // ---------------- POKER (sezione a parte) ----------------
+    case 'poker_get': {
+      require_member();
+      $meta = db()->query("SELECT * FROM poker_meta WHERE trip_id = 1")->fetch() ?: null;
+      $rows = db()->query("SELECT id, member_id, name, net, won, paid, paid_at FROM poker_ledger WHERE trip_id = 1 ORDER BY net DESC, name ASC")->fetchAll();
+      json_response(['meta' => $meta, 'ledger' => $rows]);
+    }
+
+    case 'poker_publish': {
+      $me = require_member();
+      $b = body();
+      $players = is_array($b['players'] ?? null) ? $b['players'] : [];
+      if (count($players) < 2) json_response(['error' => 'Servono almeno 2 giocatori'], 400);
+      $quota = (float)($b['quota'] ?? 0);
+      $hands = (int)($b['hands'] ?? 0);
+
+      // Preserva lo stato "saldato" dei giocatori già presenti (match per member_id o per nome)
+      $prev = db()->query("SELECT member_id, name, paid, paid_at FROM poker_ledger WHERE trip_id = 1")->fetchAll();
+      $paidBy = [];
+      foreach ($prev as $p) {
+        $key = $p['member_id'] !== null ? 'm' . (int)$p['member_id'] : 'n' . mb_strtolower(trim($p['name']));
+        $paidBy[$key] = ['paid' => (int)$p['paid'], 'paid_at' => $p['paid_at']];
+      }
+
+      $pdo = db();
+      $pdo->prepare("DELETE FROM poker_ledger WHERE trip_id = 1")->execute();
+      $ins = $pdo->prepare("INSERT INTO poker_ledger (trip_id, member_id, name, net, won, paid, paid_at) VALUES (1, ?, ?, ?, ?, ?, ?)");
+      foreach ($players as $pl) {
+        $mid = isset($pl['member_id']) && $pl['member_id'] !== null && $pl['member_id'] !== '' ? (int)$pl['member_id'] : null;
+        $name = trim((string)($pl['name'] ?? ''));
+        if ($name === '') continue;
+        $key = $mid !== null ? 'm' . $mid : 'n' . mb_strtolower($name);
+        $pp = $paidBy[$key] ?? ['paid' => 0, 'paid_at' => null];
+        $ins->execute([$mid, $name, (float)($pl['net'] ?? 0), (int)($pl['won'] ?? 0), $pp['paid'], $pp['paid_at']]);
+      }
+
+      // Upsert meta (compatibile sqlite + mysql)
+      if (driver_name($pdo) === 'mysql') {
+        $pdo->prepare("INSERT INTO poker_meta (trip_id, quota, hands, published_by_member_id, published_at)
+                       VALUES (1, ?, ?, ?, CURRENT_TIMESTAMP)
+                       ON DUPLICATE KEY UPDATE quota = VALUES(quota), hands = VALUES(hands), published_by_member_id = VALUES(published_by_member_id), published_at = CURRENT_TIMESTAMP")
+            ->execute([$quota, $hands, (int)$me['id']]);
+      } else {
+        $pdo->prepare("INSERT INTO poker_meta (trip_id, quota, hands, published_by_member_id, published_at)
+                       VALUES (1, ?, ?, ?, CURRENT_TIMESTAMP)
+                       ON CONFLICT(trip_id) DO UPDATE SET quota = excluded.quota, hands = excluded.hands, published_by_member_id = excluded.published_by_member_id, published_at = CURRENT_TIMESTAMP")
+            ->execute([$quota, $hands, (int)$me['id']]);
+      }
+      json_response(['ok' => true]);
+    }
+
+    case 'poker_toggle_paid': {
+      // Chiunque del gruppo può segnare un saldo poker (es. il vincitore segna chi lo ha pagato)
+      require_member();
+      $b = body();
+      $id = (int)($b['id'] ?? 0);
+      $row = db()->prepare("SELECT * FROM poker_ledger WHERE id = ? AND trip_id = 1");
+      $row->execute([$id]);
+      $r = $row->fetch();
+      if (!$r) json_response(['error' => 'not found'], 404);
+      $paid = (int)$r['paid'] ? 0 : 1;
+      db()->prepare("UPDATE poker_ledger SET paid = ?, paid_at = " . ($paid ? "CURRENT_TIMESTAMP" : "NULL") . " WHERE id = ?")
+          ->execute([$paid, $id]);
+      json_response(['paid' => (bool)$paid]);
+    }
+
+    case 'poker_reset': {
+      require_member();
+      db()->prepare("DELETE FROM poker_ledger WHERE trip_id = 1")->execute();
+      db()->prepare("DELETE FROM poker_meta WHERE trip_id = 1")->execute();
+      json_response(['ok' => true]);
+    }
+
     default:
       json_response(['error' => 'Azione sconosciuta: ' . $action], 404);
   }

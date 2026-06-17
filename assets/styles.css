@@ -1369,3 +1369,19 @@ h1, h2, h3, h4 {
 .pk-tx-to { color: var(--accent); font-weight: 600; }
 .pk-tx-amt { margin-left: auto; font-weight: 700; font-size: 17px; font-variant-numeric: tabular-nums; }
 .pk-even { text-align: center; padding: 18px; color: var(--text-muted); font-size: 15px; }
+
+/* Saldi Poker del gruppo (server) */
+.pk-ledger-btn { border-color: rgba(74,222,128,.4) !important; background: var(--accent-soft) !important; }
+.pk-ledger-btn .dr-ic { color: var(--accent) !important; }
+.pk-loading, .pk-empty { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 15px; line-height: 1.6; }
+.pk-empty small { color: var(--text-faint); font-size: 13px; }
+.pk-you { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); background: var(--accent-soft); padding: 1px 6px; border-radius: 6px; margin-left: 6px; }
+.darts-player.pk-debt { width: 100%; cursor: pointer; text-align: left; }
+.darts-player.pk-debt:active { transform: scale(.99); }
+.darts-player.pk-settled { opacity: .65; border-color: rgba(74,222,128,.4); }
+.darts-player.pk-settled .dp-last { color: var(--accent); }
+.pk-paidbox { display: flex; align-items: center; justify-content: flex-end; min-width: 44px; }
+.pk-check {
+  width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent); font-size: 16px; font-weight: 700; border: 1px solid rgba(74,222,128,.5);
+}
