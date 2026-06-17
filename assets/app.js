@@ -180,6 +180,14 @@ async function renderLogin() {
   dartsBtn.addEventListener('click', () => openDarts());
   grid.insertAdjacentElement('afterend', dartsBtn);
 
+  // Pulsante gioco Poker (giocabile direttamente dalla schermata iniziale)
+  const pg = pokerLoad();
+  const pokerBtn = document.createElement('button');
+  pokerBtn.className = 'login-darts login-poker';
+  pokerBtn.innerHTML = `<span class="ld-ico">🃏</span><span class="ld-txt"><b>Poker</b><small>${pg && pg.active ? 'Partita aperta · tocca per continuare' : 'Quota a testa · chi vince incassa il piatto'}</small></span><span class="ld-arrow">›</span>`;
+  pokerBtn.addEventListener('click', () => openPoker());
+  dartsBtn.insertAdjacentElement('afterend', pokerBtn);
+
   grid.querySelectorAll('.member-tile').forEach(btn => {
     btn.addEventListener('click', async () => {
       const id = +btn.dataset.id;
@@ -387,6 +395,20 @@ function viewHome() {
     <div class="dl-arrow">›</div>`;
   dartsCard.addEventListener('click', () => openDarts());
   wrap.appendChild(dartsCard);
+
+  // ===== Gioco Poker =====
+  const pokerCard = document.createElement('button');
+  pokerCard.className = 'card darts-launch poker-launch';
+  const pg = pokerLoad();
+  pokerCard.innerHTML = `
+    <div class="dl-ico">🃏</div>
+    <div class="dl-text">
+      <div class="dl-title">Poker</div>
+      <div class="dl-sub">${pg && pg.active ? 'Partita aperta · tocca per continuare' : 'Quota a testa · chi vince incassa il piatto'}</div>
+    </div>
+    <div class="dl-arrow">›</div>`;
+  pokerCard.addEventListener('click', () => openPoker());
+  wrap.appendChild(pokerCard);
 
   // Trip header info
   const trip = state.trip;
@@ -2479,6 +2501,294 @@ function openDartsChart(game) {
     modal.querySelector('#dChartClose').onclick = close;
   });
   bg.style.zIndex = 140; // sopra l'overlay del gioco (z-index 120)
+}
+
+// ===== Gioco Poker =====
+const POKER_KEY = 'vacanza_poker_v1';
+const POKER_BACKUP_KEY = 'vacanza_poker_backup_v1';
+
+function pokerLoad() {
+  try { return JSON.parse(localStorage.getItem(POKER_KEY)) || null; } catch (e) { return null; }
+}
+function pokerSave(g) {
+  if (g) localStorage.setItem(POKER_KEY, JSON.stringify(g));
+  else localStorage.removeItem(POKER_KEY);
+}
+function pokerBackupSave(g) {
+  if (g && g.players && g.players.length) localStorage.setItem(POKER_BACKUP_KEY, JSON.stringify(g));
+}
+function pokerBackupLoad() {
+  try { return JSON.parse(localStorage.getItem(POKER_BACKUP_KEY)) || null; } catch (e) { return null; }
+}
+
+// Chi paga chi (saldo minimo): debitori -> creditori
+function pokerSettle(game) {
+  const cred = game.players.map((p, i) => ({ i, net: p.net })).filter(b => b.net > 0.001).sort((a, b) => b.net - a.net);
+  const debt = game.players.map((p, i) => ({ i, net: -p.net })).filter(b => b.net > 0.001).sort((a, b) => b.net - a.net);
+  const tx = [];
+  let ci = 0, di = 0;
+  while (ci < cred.length && di < debt.length) {
+    const amt = Math.min(cred[ci].net, debt[di].net);
+    tx.push({ from: debt[di].i, to: cred[ci].i, amt: +amt.toFixed(2) });
+    cred[ci].net -= amt; debt[di].net -= amt;
+    if (cred[ci].net < 0.001) ci++;
+    if (debt[di].net < 0.001) di++;
+  }
+  return tx;
+}
+
+function openPoker() {
+  const overlay = document.createElement('div');
+  overlay.className = 'darts-overlay';
+  document.body.appendChild(overlay);
+  const close = () => { overlay.remove(); if (state.route === 'home') render(); };
+
+  let game = pokerLoad();
+
+  // ---- stato setup ----
+  let setupQuota = (game && game.quota) || 5;
+  let setupPlayers = (game && !game.active && game.players)
+    ? game.players.map(p => ({ name: p.name, avatar: p.avatar || null, id: p.id || null }))
+    : [];
+
+  const paint = () => { (game && game.active) ? renderGame() : renderSetup(); };
+
+  // ============ SETUP ============
+  function renderSetup() {
+    const preset = [1, 2, 5, 10];
+    const bk = pokerBackupLoad();
+    const bkInfo = bk ? `${bk.players.map(p => p.name).join(', ')} · ${fmt(bk.quota)}/mano` : '';
+    overlay.innerHTML = `
+      <div class="darts-sheet">
+        <div class="darts-top">
+          <div class="darts-title">🃏 Poker</div>
+          <button class="icon-btn" data-x aria-label="Chiudi">✕</button>
+        </div>
+        <div class="darts-scroll">
+          ${bk ? `<button class="darts-restore" id="pRestore">
+            <span class="dr-ic">↩︎</span>
+            <span class="dr-tx"><b>Riapri partita precedente</b><small>${escapeHtml(bkInfo)}</small></span>
+          </button>` : ''}
+          <div class="darts-section-lbl">Quota a testa per mano (€)</div>
+          <div class="darts-chips">
+            ${preset.map(v => `<button class="darts-chip ${setupQuota === v ? 'active' : ''}" data-q="${v}">${v}</button>`).join('')}
+            <input class="darts-chip-input" id="pQuotaCustom" inputmode="decimal" placeholder="Altro" value="${preset.includes(setupQuota) ? '' : setupQuota}" />
+          </div>
+
+          <div class="darts-section-lbl">Giocatori <span class="muted">· ${setupPlayers.length}</span></div>
+          <div class="darts-members">
+            ${state.members.map(m => {
+              const on = setupPlayers.some(p => p.name === m.name);
+              return `<button class="darts-member ${on ? 'on' : ''}" data-mname="${escapeHtml(m.name)}">${avatarHTML(m, 36)}<span>${escapeHtml(m.name)}</span></button>`;
+            }).join('')}
+          </div>
+
+          <div class="darts-add">
+            <input id="pCustomName" placeholder="Aggiungi un altro giocatore..." autocomplete="off" />
+            <button class="btn ghost" id="pAddBtn">＋</button>
+          </div>
+          ${setupPlayers.filter(p => !state.members.some(m => m.name === p.name)).map(p =>
+            `<div class="darts-guest"><span>👤 ${escapeHtml(p.name)}</span><button data-rm="${escapeHtml(p.name)}" aria-label="Rimuovi">✕</button></div>`
+          ).join('')}
+        </div>
+        <div class="darts-foot">
+          <button class="btn primary full lg" id="pStart" ${setupPlayers.length < 2 ? 'disabled' : ''}>
+            ${setupPlayers.length < 2 ? 'Scegli almeno 2 giocatori' : `Apri partita · ${fmt(setupQuota)}/mano`}
+          </button>
+        </div>
+      </div>`;
+
+    overlay.querySelector('[data-x]').onclick = close;
+    const restoreBtn = overlay.querySelector('#pRestore');
+    if (restoreBtn) restoreBtn.onclick = () => {
+      const b = pokerBackupLoad();
+      if (!b) { toast('Nessuna partita da riaprire', true); return; }
+      game = Object.assign({}, b, { active: true, closed: false });
+      pokerSave(game);
+      renderGame();
+    };
+    overlay.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { setupQuota = +b.dataset.q; renderSetup(); });
+    const ci = overlay.querySelector('#pQuotaCustom');
+    ci.oninput = () => { const v = parseFloat((ci.value || '').replace(',', '.')); if (v > 0) setupQuota = v; };
+    ci.onblur = () => renderSetup();
+    overlay.querySelectorAll('[data-mname]').forEach(b => b.onclick = () => {
+      const name = b.dataset.mname;
+      const i = setupPlayers.findIndex(p => p.name === name);
+      if (i >= 0) setupPlayers.splice(i, 1);
+      else { const m = state.members.find(x => x.name === name); setupPlayers.push({ name, avatar: m?.avatar || null, id: m?.id || null }); }
+      renderSetup();
+    });
+    const addCustom = () => {
+      const inp = overlay.querySelector('#pCustomName');
+      const n = (inp.value || '').trim();
+      if (!n) return;
+      if (setupPlayers.some(p => p.name === n)) { toast('Giocatore già aggiunto', true); return; }
+      setupPlayers.push({ name: n, avatar: null, id: null });
+      renderSetup();
+    };
+    overlay.querySelector('#pAddBtn').onclick = addCustom;
+    overlay.querySelector('#pCustomName').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } };
+    overlay.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
+      const i = setupPlayers.findIndex(p => p.name === b.dataset.rm);
+      if (i >= 0) setupPlayers.splice(i, 1);
+      renderSetup();
+    });
+    overlay.querySelector('#pStart').onclick = () => {
+      if (setupPlayers.length < 2) return;
+      const prev = pokerLoad();
+      if (prev && prev.players && prev.log && prev.log.length) pokerBackupSave(prev);
+      game = {
+        active: true, closed: false, quota: setupQuota, log: [],
+        players: setupPlayers.map(p => ({ name: p.name, avatar: p.avatar, id: p.id, won: 0, net: 0 })),
+      };
+      pokerSave(game);
+      renderGame();
+    };
+  }
+
+  // ============ PARTITA ============
+  // mano corrente: set degli indici giocatori "in gioco" (default tutti)
+  let inHand = null;
+
+  function renderGame() {
+    if (inHand === null) inHand = game.players.map((_, i) => i);
+    const pot = game.log.reduce((a, h) => a + h.pot, 0);
+    // classifica per saldo (chi ha vinto di più in alto)
+    const order = game.players.map((p, i) => ({ i, net: p.net })).sort((a, b) => b.net - a.net);
+
+    overlay.innerHTML = `
+      <div class="darts-sheet">
+        <div class="darts-top">
+          <div class="darts-title">🃏 ${fmt(game.quota)}<span class="pk-perhand">/mano</span></div>
+          <div class="row gap">
+            <button class="icon-btn" id="pSettle" title="Chi paga chi">💰</button>
+            <button class="icon-btn" id="pUndo" title="Annulla ultima mano">↺</button>
+            <button class="icon-btn" id="pNew" title="Nuova partita">⟲</button>
+            <button class="icon-btn" data-x aria-label="Chiudi">✕</button>
+          </div>
+        </div>
+        <div class="pk-banner ${game.closed ? 'closed' : 'open'}">
+          <span class="pk-dot"></span>
+          ${game.closed ? 'Partita chiusa' : 'Partita aperta'}
+          <span class="pk-stat">${game.log.length} man${game.log.length === 1 ? 'o' : 'i'} · piatto totale ${fmt(pot)}</span>
+        </div>
+        <div class="darts-scroll">
+          <div class="darts-players">
+            ${order.map(({ i }) => {
+              const p = game.players[i];
+              const pos = p.net > 0.001, neg = p.net < -0.001;
+              const lbl = pos ? 'deve ricevere' : neg ? 'deve pagare' : 'in pari';
+              return `<div class="darts-player ${pos ? 'pk-pos' : ''} ${neg ? 'pk-neg' : ''}">
+                ${avatarHTML(p, 34)}
+                <div class="dp-name">${escapeHtml(p.name)}<span class="dp-last">🏆 ${p.won} · ${lbl}</span></div>
+                <div class="dp-score pk-score">${p.net > 0 ? '+' : ''}${fmt(p.net).replace('€', '')}<small>€</small></div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+        ${!game.closed ? `
+        <div class="darts-foot">
+          <div class="darts-current">Chi era in gioco in questa mano? <b>(${inHand.length})</b> · piatto ${fmt(game.quota * inHand.length)}</div>
+          <div class="pk-inhand">
+            ${game.players.map((p, i) => `<button class="pk-chip ${inHand.includes(i) ? 'on' : ''}" data-in="${i}">${avatarHTML(p, 26)}<span>${escapeHtml(p.name)}</span></button>`).join('')}
+          </div>
+          <div class="darts-section-lbl" style="margin-top:14px">Tocca chi ha vinto la mano</div>
+          <div class="pk-winners">
+            ${game.players.map((p, i) => `<button class="pk-win ${inHand.includes(i) ? '' : 'off'}" data-win="${i}" ${inHand.includes(i) ? '' : 'disabled'}>${avatarHTML(p, 30)}<span>${escapeHtml(p.name)}</span></button>`).join('')}
+          </div>
+        </div>` : `
+        <div class="darts-foot">
+          <button class="btn ghost full" id="pReopen">↩︎ Riapri la partita</button>
+          <button class="btn primary full lg" id="pSettle2" style="margin-top:8px">💰 Vedi chi paga chi</button>
+        </div>`}
+      </div>`;
+
+    overlay.querySelector('[data-x]').onclick = close;
+    overlay.querySelector('#pUndo').onclick = undo;
+    overlay.querySelector('#pSettle').onclick = () => openPokerSettle(game);
+    overlay.querySelector('#pNew').onclick = () => {
+      if (confirm('Iniziare una nuova partita? Quella attuale verrà salvata come backup.')) { pokerBackupSave(game); game.active = false; renderSetup(); }
+    };
+    const reopen = overlay.querySelector('#pReopen');
+    if (reopen) reopen.onclick = () => { game.closed = false; pokerSave(game); renderGame(); };
+    const settle2 = overlay.querySelector('#pSettle2');
+    if (settle2) settle2.onclick = () => openPokerSettle(game);
+
+    if (!game.closed) {
+      overlay.querySelectorAll('[data-in]').forEach(b => b.onclick = () => {
+        const i = +b.dataset.in;
+        const k = inHand.indexOf(i);
+        if (k >= 0) { if (inHand.length <= 2) { toast('Servono almeno 2 in gioco', true); return; } inHand.splice(k, 1); }
+        else inHand.push(i);
+        renderGame();
+      });
+      overlay.querySelectorAll('[data-win]').forEach(b => b.onclick = () => {
+        const wi = +b.dataset.win;
+        if (!inHand.includes(wi)) return;
+        recordHand(wi, inHand.slice());
+      });
+    }
+  }
+
+  function recordHand(winnerIdx, participants) {
+    const pot = +(game.quota * participants.length).toFixed(2);
+    participants.forEach(i => {
+      if (i === winnerIdx) game.players[i].net = +(game.players[i].net + game.quota * (participants.length - 1)).toFixed(2);
+      else game.players[i].net = +(game.players[i].net - game.quota).toFixed(2);
+    });
+    game.players[winnerIdx].won++;
+    game.log.push({ winner: winnerIdx, participants, pot });
+    pokerSave(game);
+    toast(`🏆 ${game.players[winnerIdx].name} vince ${fmt(game.quota * (participants.length - 1))}`);
+    renderGame();
+  }
+
+  function undo() {
+    if (!game.log.length) { toast('Niente da annullare'); return; }
+    const h = game.log.pop();
+    h.participants.forEach(i => {
+      if (i === h.winner) game.players[i].net = +(game.players[i].net - game.quota * (h.participants.length - 1)).toFixed(2);
+      else game.players[i].net = +(game.players[i].net + game.quota).toFixed(2);
+    });
+    game.players[h.winner].won--;
+    pokerSave(game);
+    renderGame();
+  }
+
+  paint();
+}
+
+function openPokerSettle(game) {
+  const tx = pokerSettle(game);
+  const ranked = game.players.map((p, i) => ({ p, i })).sort((a, b) => b.p.net - a.p.net);
+  const html = `
+    <h2>💰 Chi paga chi</h2>
+    ${tx.length ? `<div class="pk-settle">
+      ${tx.map(t => `<div class="pk-tx">
+        <span class="pk-tx-from">${escapeHtml(game.players[t.from].name)}</span>
+        <span class="pk-tx-arrow">→</span>
+        <span class="pk-tx-to">${escapeHtml(game.players[t.to].name)}</span>
+        <span class="pk-tx-amt">${fmt(t.amt)}</span>
+      </div>`).join('')}
+    </div>` : `<div class="pk-even">Tutti in pari 🤝</div>`}
+    <div class="darts-section-lbl" style="margin-top:16px">Saldo dei giocatori</div>
+    <div class="darts-rank">
+      ${ranked.map(({ p, i }) => {
+        const col = avatarColor(p.id || i + 1);
+        const pos = p.net > 0.001, neg = p.net < -0.001;
+        return `<div class="dr-row ${pos ? 'won' : ''}">
+          <span class="dr-dot" style="background:${col}"></span>
+          <span class="dr-name">${escapeHtml(p.name)}</span>
+          <span class="dr-thrown">🏆 ${p.won}</span>
+          <span class="dr-score" style="color:${pos ? 'var(--accent)' : neg ? 'var(--danger)' : 'var(--text-muted)'}">${p.net > 0 ? '+' : ''}${fmt(p.net)}</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <button class="btn primary full" id="pSettleClose" style="margin-top:14px">Chiudi</button>`;
+  const bg = openModal(html, (modal, close) => {
+    modal.querySelector('#pSettleClose').onclick = close;
+  });
+  bg.style.zIndex = 140;
 }
 
 // ============ START ============
