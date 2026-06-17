@@ -2703,6 +2703,7 @@ function openPoker() {
           <div class="pk-winners">
             ${game.players.map((p, i) => `<button class="pk-win ${inHand.includes(i) ? '' : 'off'}" data-win="${i}" ${inHand.includes(i) ? '' : 'disabled'}>${avatarHTML(p, 30)}<span>${escapeHtml(p.name)}</span></button>`).join('')}
           </div>
+          <button class="btn ghost full pk-newgame" id="pNew2" style="margin-top:14px">➕ Nuova partita</button>
         </div>` : `
         <div class="darts-foot">
           <button class="btn ghost full" id="pReopen">↩︎ Riapri la partita</button>
@@ -2715,9 +2716,12 @@ function openPoker() {
     if (lb2) lb2.onclick = () => openPokerLedger();
     overlay.querySelector('#pUndo').onclick = undo;
     overlay.querySelector('#pSettle').onclick = () => openPokerSettle(game);
-    overlay.querySelector('#pNew').onclick = () => {
+    const newGame = () => {
       if (confirm('Iniziare una nuova partita? Quella attuale verrà salvata come backup.')) { pokerBackupSave(game); game.active = false; renderSetup(); }
     };
+    overlay.querySelector('#pNew').onclick = newGame;
+    const newBtn2 = overlay.querySelector('#pNew2');
+    if (newBtn2) newBtn2.onclick = newGame;
     const reopen = overlay.querySelector('#pReopen');
     if (reopen) reopen.onclick = () => { game.closed = false; pokerSave(game); renderGame(); };
     const settle2 = overlay.querySelector('#pSettle2');
