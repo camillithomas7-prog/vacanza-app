@@ -21,14 +21,8 @@ header('Cache-Control: no-cache, must-revalidate');
 
   <link rel="stylesheet" href="assets/styles.css?v=<?= $cssV ?>" />
 
-  <!-- Tabellone freccette 3D (Three.js locale + addon CDN) -->
-  <script type="importmap">
-  {"imports":{
-    "three":"assets/vendor/three.module.js?v=<?= @filemtime(__DIR__ . '/assets/vendor/three.module.js') ?: time() ?>",
-    "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
-  }}
-  </script>
-  <script type="module" src="assets/darts3d.js?v=<?= @filemtime(__DIR__ . '/assets/darts3d.js') ?: time() ?>"></script>
+  <!-- Tabellone freccette neon (canvas 2D leggero, carica all'istante) -->
+  <script src="assets/dartsboard.js?v=<?= @filemtime(__DIR__ . '/assets/dartsboard.js') ?: time() ?>"></script>
 
   <title>Vacanza</title>
 </head>

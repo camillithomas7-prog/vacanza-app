@@ -1390,12 +1390,13 @@ h1, h2, h3, h4 {
 .dp-score.bust,#dResto.bust{color:#ff5a4d!important}
 .icon-btn.dcancel:hover{color:#ff5a4d}
 
-/* tabellone freccette 3D neon */
-.darts3d-wrap{flex:none;width:100%;height:clamp(150px,23vh,230px);position:relative;
-  background:radial-gradient(circle at 50% 45%,rgba(33,230,255,.06),transparent 70%)}
-.darts3d-wrap:not(.ready)::after{content:"Carico tabellone 3D…";position:absolute;inset:0;
-  display:flex;align-items:center;justify-content:center;color:#3f6f7a;font-size:12px;letter-spacing:.04em}
-canvas.darts3d{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+/* tabellone freccette neon (canvas 2D + tilt 3D) */
+.darts3d-wrap{flex:none;width:100%;height:clamp(165px,25vh,250px);position:relative;perspective:1000px;
+  background:radial-gradient(circle at 50% 42%,rgba(33,230,255,.07),transparent 68%)}
+.darts3d-wrap:not(.ready)::after{content:"";position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center;color:#3f6f7a;font-size:12px}
+canvas.darts3d{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;
+  transform:rotateX(13deg);transform-origin:center 58%}
 
 /* freccette: tastierino compatto (più spazio su mobile per board + giocatori) */
 .darts-foot{padding:8px 12px calc(8px + env(safe-area-inset-bottom))}
