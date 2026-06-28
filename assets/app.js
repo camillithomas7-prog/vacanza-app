@@ -2199,7 +2199,17 @@ function dartsRecordGame(game) {
   names.forEach(n => { if (h[key].wins[n] == null) h[key].wins[n] = 0; });
   const winnerName = game.players[game.winner].name;
   h[key].wins[winnerName] = (h[key].wins[winnerName] || 0) + 1;
-  h[key].games.unshift({ date: Date.now(), start: game.start, winner: winnerName, scores: game.players.map(p => ({ name: p.name, score: p.score })) });
+  // statistiche tiri (ogni "turno" da 3 freccette): più alto e più basso della partita
+  let best = null, low = null;
+  game.players.forEach(p => (p.throws || []).forEach(v => {
+    if (best == null || v > best.val) best = { name: p.name, val: v };
+    if (low == null || v < low.val) low = { name: p.name, val: v };
+  }));
+  h[key].games.unshift({
+    date: Date.now(), start: game.start, winner: winnerName,
+    scores: game.players.map(p => ({ name: p.name, score: p.score })),
+    best, low
+  });
   dartsHistSave(h);
 }
 function dartsUnrecordLast(game) {
@@ -2224,13 +2234,24 @@ function openDartsHistory() {
       const g = h[k];
       const standings = Object.keys(g.wins).sort((a, b) => g.wins[b] - g.wins[a]);
       const top = g.wins[standings[0]] || 0;
+      // record assoluti del gruppo (tiro più alto e più basso di sempre)
+      let allBest = null, allLow = null;
+      g.games.forEach(gm => {
+        if (gm.best && (allBest == null || gm.best.val > allBest.val)) allBest = gm.best;
+        if (gm.low && (allLow == null || gm.low.val < allLow.val)) allLow = gm.low;
+      });
+      const recRow = (allBest || allLow) ? `<div class="dh-records">
+          ${allBest ? `<span class="dh-rec hi"><small>🔥 Tiro record</small><b>${allBest.val}</b><span>${escapeHtml(allBest.name)}</span></span>` : ''}
+          ${allLow ? `<span class="dh-rec lo"><small>🥶 Tiro più basso</small><b>${allLow.val}</b><span>${escapeHtml(allLow.name)}</span></span>` : ''}
+        </div>` : '';
       return `<div class="dh-group">
         <div class="dh-gtitle">${escapeHtml(g.players.join(' · '))}<span>${g.games.length} ${g.games.length === 1 ? 'partita' : 'partite'}</span></div>
         <div class="dh-standings">
           ${standings.map((n, i) => { const lead = g.wins[n] === top && top > 0; return `<div class="dh-row ${lead ? 'lead' : ''}"><span class="dh-pos">${lead ? '👑' : (i + 1) + '°'}</span><span class="dh-name">${escapeHtml(n)}</span><span class="dh-w"><b>${g.wins[n]}</b> <small>vitt.</small></span></div>`; }).join('')}
         </div>
+        ${recRow}
         <details class="dh-games"><summary>Tutte le partite (${g.games.length})</summary>
-          ${g.games.map(gm => `<div class="dh-game"><span>🏆 <b>${escapeHtml(gm.winner)}</b></span><span class="muted">${fmtDate(gm.date)} · ${gm.start}</span></div>`).join('')}
+          ${g.games.map(gm => `<div class="dh-game"><span>🏆 <b>${escapeHtml(gm.winner)}</b></span><span class="muted">${fmtDate(gm.date)} · ${gm.start}${gm.best ? ` · max <b style="color:#21e6ff">${gm.best.val}</b> ${escapeHtml(gm.best.name)}${gm.low ? ` · min ${gm.low.val}` : ''}` : ''}</span></div>`).join('')}
         </details>
       </div>`;
     }).join('') + `<button class="btn primary full" id="dhClose" style="margin-top:14px">Chiudi</button>`;

@@ -1430,3 +1430,12 @@ canvas.darts3d{position:absolute;inset:0;width:100%;height:100%;display:block;to
 .dh-games summary::before{content:"▸ "}
 .dh-games[open] summary::before{content:"▾ "}
 .dh-game{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:6px 4px;border-top:1px solid var(--border,rgba(255,255,255,.08))}
+
+/* record tiri nello storico freccette */
+.dh-records{display:flex;gap:8px;margin-top:8px}
+.dh-rec{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;padding:8px 6px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid var(--border,rgba(255,255,255,.08))}
+.dh-rec small{font-size:10px;color:var(--text-muted,#9b9ba4)}
+.dh-rec b{font-size:22px;line-height:1.05}
+.dh-rec>span{font-size:11px;color:var(--text-muted,#9b9ba4)}
+.dh-rec.hi b{color:#ff2d9b}
+.dh-rec.lo b{color:#21e6ff}
