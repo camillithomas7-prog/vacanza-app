@@ -20,6 +20,16 @@ header('Cache-Control: no-cache, must-revalidate');
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..800&family=Geist+Mono:wght@300..600&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="assets/styles.css?v=<?= $cssV ?>" />
+
+  <!-- Tabellone freccette 3D (Three.js locale + addon CDN) -->
+  <script type="importmap">
+  {"imports":{
+    "three":"assets/vendor/three.module.js?v=<?= @filemtime(__DIR__ . '/assets/vendor/three.module.js') ?: time() ?>",
+    "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
+  }}
+  </script>
+  <script type="module" src="assets/darts3d.js?v=<?= @filemtime(__DIR__ . '/assets/darts3d.js') ?: time() ?>"></script>
+
   <title>Vacanza</title>
 </head>
 <body>

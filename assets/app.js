@@ -2189,7 +2189,11 @@ function openDarts() {
   const overlay = document.createElement('div');
   overlay.className = 'darts-overlay';
   document.body.appendChild(overlay);
-  const close = () => { overlay.remove(); if (state.route === 'home') render(); };
+  const close = () => { try { window.Darts3D && window.Darts3D.unmount(); } catch (e) {} overlay.remove(); if (state.route === 'home') render(); };
+
+  // canvas 3D persistente: montato una volta, riattaccato a ogni render (no flash, no perdita contesto WebGL)
+  const boardCanvas = document.createElement('canvas');
+  boardCanvas.id = 'darts3dCanvas'; boardCanvas.className = 'darts3d';
 
   let game = dartsLoad();
 
@@ -2318,6 +2322,7 @@ function openDarts() {
             <button class="icon-btn" data-x aria-label="Chiudi">✕</button>
           </div>
         </div>
+        <div class="darts3d-wrap" id="d3dSlot"></div>
         ${game.winner != null ? `
           <div class="darts-winner">
             <div class="dw-trophy">🏆</div>
@@ -2371,7 +2376,7 @@ function openDarts() {
     overlay.querySelector('#dUndo').onclick = undo;
     overlay.querySelector('#dChart').onclick = () => openDartsChart(game);
     overlay.querySelector('#dNew').onclick = () => {
-      if (confirm('Iniziare una nuova partita? Quella attuale verrà persa.')) { dartsBackupSave(game); game.active = false; renderSetup(); }
+      if (confirm('Iniziare una nuova partita? Quella attuale verrà persa.')) { try { window.Darts3D && window.Darts3D.unmount(); } catch (e) {} dartsBackupSave(game); game.active = false; renderSetup(); }
     };
     overlay.querySelector('#dCancel').onclick = () => {
       if (confirm('Annullare la partita in corso? I punteggi andranno persi (potrai ripristinarla dal menu iniziale).')) {
@@ -2379,9 +2384,13 @@ function openDarts() {
       }
     };
     const winNew = overlay.querySelector('#dWinNew');
-    if (winNew) winNew.onclick = () => { dartsBackupSave(game); game.active = false; renderSetup(); };
+    if (winNew) winNew.onclick = () => { try { window.Darts3D && window.Darts3D.unmount(); } catch (e) {} dartsBackupSave(game); game.active = false; renderSetup(); };
     const winChart = overlay.querySelector('#dWinChart');
     if (winChart) winChart.onclick = () => openDartsChart(game);
+
+    // ── monta il tabellone 3D nel suo slot persistente ──
+    const _slot = overlay.querySelector('#d3dSlot');
+    if (_slot) { _slot.appendChild(boardCanvas); if (window.Darts3D) { try { window.Darts3D.mount(boardCanvas); } catch (e) { console.warn('darts3d', e); } } }
 
     if (game.winner == null) {
       let darts = [];   // i 3 tiri di questo turno
@@ -2422,6 +2431,11 @@ function openDarts() {
         if (darts.length >= 3) { toast('Hai già fatto 3 tiri — premi Conferma', true); return; }
         const base = +b.dataset.v;
         const val = b.hasAttribute('data-fixed') ? base : base * mult; // 25/50/Miss senza moltiplicatore
+        // ── effetto 3D: freccia che vola sul numero + esplosione ──
+        if (window.Darts3D) {
+          const mc = base === 50 ? 'B' : base === 25 ? '25' : base === 0 ? 'M' : (mult === 3 ? 'T' : mult === 2 ? 'D' : 'S');
+          try { window.Darts3D.hit(base, mc); } catch (e) {}
+        }
         darts.push(val);
         mult = 1; // si riparte da Singolo dopo ogni freccia
         refresh();
