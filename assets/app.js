@@ -2314,6 +2314,7 @@ function openDarts() {
             <button class="icon-btn" id="dChart" title="Grafico partita">📈</button>
             <button class="icon-btn" id="dUndo" title="Annulla ultimo tiro">↺</button>
             <button class="icon-btn" id="dNew" title="Nuova partita">⟲</button>
+            <button class="icon-btn dcancel" id="dCancel" title="Annulla partita">🗑️</button>
             <button class="icon-btn" data-x aria-label="Chiudi">✕</button>
           </div>
         </div>
@@ -2334,14 +2335,14 @@ function openDarts() {
                 <span class="dp-rank ${i === leaderIdx ? 'leader' : ''}">${badge}</span>
                 ${avatarHTML(p, 34)}
                 <div class="dp-name">${escapeHtml(p.name)}${last != null ? `<span class="dp-last">ultimo −${last}</span>` : ''}</div>
-                <div class="dp-score">${p.score}</div>
+                <div class="dp-score"${active ? ' id="dActiveScore"' : ''}>${p.score}</div>
               </div>`;
             }).join('')}
           </div>
         </div>
         ${game.winner == null ? `
         <div class="darts-foot">
-          <div class="darts-current">Turno di <b>${escapeHtml(cur.name)}</b> — gli restano <b>${cur.score}</b> · 3 tiri</div>
+          <div class="darts-current">Turno di <b>${escapeHtml(cur.name)}</b> — gli restano <b id="dResto">${cur.score}</b> · 3 tiri</div>
           <div class="dthrow">
             <span class="dslot" data-i="0">–</span>
             <span class="dslot" data-i="1">–</span>
@@ -2372,6 +2373,11 @@ function openDarts() {
     overlay.querySelector('#dNew').onclick = () => {
       if (confirm('Iniziare una nuova partita? Quella attuale verrà persa.')) { dartsBackupSave(game); game.active = false; renderSetup(); }
     };
+    overlay.querySelector('#dCancel').onclick = () => {
+      if (confirm('Annullare la partita in corso? I punteggi andranno persi (potrai ripristinarla dal menu iniziale).')) {
+        dartsBackupSave(game); dartsSave(null); game = null; close();
+      }
+    };
     const winNew = overlay.querySelector('#dWinNew');
     if (winNew) winNew.onclick = () => { dartsBackupSave(game); game.active = false; renderSetup(); };
     const winChart = overlay.querySelector('#dWinChart');
@@ -2384,14 +2390,30 @@ function openDarts() {
       const sumEl = overlay.querySelector('#dSum');
       const multBtns = overlay.querySelectorAll('.dm');
 
+      const restoEl = overlay.querySelector('#dResto');
+      const actScoreEl = overlay.querySelector('#dActiveScore');
+      const okBtn = overlay.querySelector('#dOk');
       function refresh() {
         slots.forEach((s, i) => {
           const has = darts[i] != null;
           s.textContent = has ? (darts[i] === 0 ? '✗' : darts[i]) : '–';
           s.classList.toggle('filled', has);
         });
-        sumEl.textContent = darts.reduce((a, b) => a + b, 0);
+        const sum = darts.reduce((a, b) => a + b, 0);
+        sumEl.textContent = sum;
         multBtns.forEach(b => b.classList.toggle('active', +b.dataset.m === mult));
+        // ── il punteggio scala a ogni tiro; se sfora → SBALLO e torna a quello di prima ──
+        const live = cur.score - sum;
+        const bust = live < 0;
+        if (restoEl) {
+          restoEl.textContent = bust ? 'SBALLO' : live;
+          restoEl.classList.toggle('bust', bust);
+        }
+        if (actScoreEl) {
+          actScoreEl.textContent = bust ? cur.score : live;   // se sballa mostra di nuovo quello di partenza
+          actScoreEl.classList.toggle('bust', bust);
+        }
+        if (okBtn) okBtn.textContent = bust ? 'Sballato' : 'Conferma';
       }
 
       multBtns.forEach(b => b.onclick = () => { mult = +b.dataset.m; refresh(); });
