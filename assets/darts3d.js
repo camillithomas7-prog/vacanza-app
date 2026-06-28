@@ -1,11 +1,7 @@
 // Vacanza — Tabellone freccette 3D neon (Three.js + bloom).
 // API globale: window.Darts3D.mount(canvas) / .hit(number, mult) / .unmount()
 //   mult: 'S' singolo · 'D' doppio · 'T' triplo · 'B' bull50 · '25' · 'M' miss
-import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import * as THREE from 'three';   // unica dipendenza (locale) — nessun addon da CDN, bulletproof
 
 const MAGENTA = '#d31f7e', PURPLE = '#3c1f9e', CYAN = '#21e6ff', DEEP = '#1b1150', PINK = '#ff4fb0';
 const ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
@@ -29,18 +25,18 @@ function boardTexture() {
     const a0 = start + i * seg, a1 = a0 + seg, alt = i % 2 === 0;
     wedge(rTriple, rOutS, a0, a1, alt ? MAGENTA : DEEP);
     wedge(rBull, rInS, a0, a1, alt ? MAGENTA : DEEP);
-    wedge(rInS, rTriple, a0, a1, alt ? PURPLE : CYAN, 12);
-    wedge(rOutS, rDouble, a0, a1, alt ? CYAN : PURPLE, 12);
+    wedge(rInS, rTriple, a0, a1, alt ? PURPLE : CYAN, 18);
+    wedge(rOutS, rDouble, a0, a1, alt ? CYAN : PURPLE, 18);
   }
   x.lineWidth = 6; x.strokeStyle = CYAN; x.shadowColor = CYAN;
-  [rDouble, rOutS, rTriple, rInS, rBull].forEach(r => { x.shadowBlur = 16; x.beginPath(); x.arc(c, c, r, 0, 7); x.stroke(); });
-  x.lineWidth = 3; x.shadowBlur = 14;
+  [rDouble, rOutS, rTriple, rInS, rBull].forEach(r => { x.shadowBlur = 26; x.beginPath(); x.arc(c, c, r, 0, 7); x.stroke(); });
+  x.lineWidth = 3; x.shadowBlur = 20;
   for (let i = 0; i < 20; i++) { const a = start + i * seg; x.beginPath(); x.moveTo(c + Math.cos(a) * rBull, c + Math.sin(a) * rBull); x.lineTo(c + Math.cos(a) * rDouble, c + Math.sin(a) * rDouble); x.stroke(); }
   x.shadowBlur = 0;
   wedge(rBullIn, rBull, 0, Math.PI * 2, '#13d36a', 20);
   x.beginPath(); x.arc(c, c, rBullIn, 0, 7); x.fillStyle = PINK; x.shadowBlur = 24; x.shadowColor = PINK; x.fill(); x.shadowBlur = 0;
   x.fillStyle = '#f2feff'; x.font = `800 ${S * 0.062}px Inter, Arial`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.shadowColor = CYAN;
-  for (let i = 0; i < 20; i++) { const a = start + i * seg + seg / 2, rr = Rr * 1.16; x.shadowBlur = 22; x.fillText(ORDER[i], c + Math.cos(a) * rr, c + Math.sin(a) * rr); }
+  for (let i = 0; i < 20; i++) { const a = start + i * seg + seg / 2, rr = Rr * 1.16; x.shadowBlur = 30; x.fillText(ORDER[i], c + Math.cos(a) * rr, c + Math.sin(a) * rr); }
   x.shadowBlur = 0;
   const tex = new THREE.CanvasTexture(g); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8; return tex;
 }
@@ -90,26 +86,22 @@ const Darts3D = {
     try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); }
     catch (e) { console.warn('WebGL non disponibile', e); return; }
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100); camera.position.set(0, 0, 8.6);
     scene.add(new THREE.AmbientLight(0x506080, 1.5));
     const sp = new THREE.SpotLight(0xffffff, 40, 40, 0.6, 0.6); sp.position.set(0, 6, 7); scene.add(sp);
     const board = new THREE.Group(); scene.add(board);
     board.add(new THREE.Mesh(new THREE.CircleGeometry(2.6, 64), new THREE.MeshBasicMaterial({ map: boardTexture(), transparent: true })));
-    board.add(new THREE.Mesh(new THREE.TorusGeometry(2.62, 0.12, 20, 80), new THREE.MeshStandardMaterial({ color: 0x0a0f2a, emissive: new THREE.Color(CYAN), emissiveIntensity: 0.7, metalness: .6, roughness: .3 })));
-    const composer = new EffectComposer(renderer);
-    composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.4, 0.6, 0.78);
-    composer.addPass(bloom); composer.addPass(new OutputPass());
+    board.add(new THREE.Mesh(new THREE.TorusGeometry(2.62, 0.12, 20, 80), new THREE.MeshStandardMaterial({ color: 0x0a0f2a, emissive: new THREE.Color(CYAN), emissiveIntensity: 1.3, metalness: .6, roughness: .3 })));
     let t = 0, alive = true;
-    const loop = () => { if (!alive) return; t += 0.016; board.rotation.y = 0.14 + Math.sin(t * 0.5) * 0.05; board.rotation.x = -0.14 + Math.cos(t * 0.4) * 0.035; composer.render(); requestAnimationFrame(loop); };
+    const loop = () => { if (!alive) return; t += 0.016; board.rotation.y = 0.14 + Math.sin(t * 0.5) * 0.05; board.rotation.x = -0.14 + Math.cos(t * 0.4) * 0.035; renderer.render(scene, camera); requestAnimationFrame(loop); };
     const resize = () => {
       const w = canvas.clientWidth || canvas.offsetWidth || 320, h = canvas.clientHeight || canvas.offsetHeight || 320;
-      renderer.setSize(w, h, false); composer.setSize(w, h); bloom.setSize(w, h);
+      renderer.setSize(w, h, false);
       camera.aspect = w / h; camera.updateProjectionMatrix();
     };
-    R = { canvas, renderer, scene, camera, board, composer, resize, stop: () => { alive = false; } };
+    R = { canvas, renderer, scene, camera, board, resize, stop: () => { alive = false; } };
     const ro = new ResizeObserver(resize); ro.observe(canvas); R.ro = ro;
     resize(); loop();
   },
@@ -129,7 +121,7 @@ const Darts3D = {
   unmount() {
     if (!R) return;
     R.stop(); if (R.ro) R.ro.disconnect();
-    try { R.renderer.dispose(); R.composer.dispose && R.composer.dispose(); } catch (e) {}
+    try { R.renderer.dispose(); R.renderer.forceContextLoss && R.renderer.forceContextLoss(); } catch (e) {}
     R = null;
   }
 };
