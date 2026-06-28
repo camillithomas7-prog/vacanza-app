@@ -2185,6 +2185,60 @@ function dartsBackupLoad() {
   try { return JSON.parse(localStorage.getItem(DARTS_BACKUP_KEY)) || null; } catch (e) { return null; }
 }
 
+// ===== Storico partite freccette per GRUPPO di giocatori =====
+const DARTS_HIST_KEY = 'vacanza_darts_history_v1';
+function dartsHistLoad() { try { return JSON.parse(localStorage.getItem(DARTS_HIST_KEY)) || {}; } catch (e) { return {}; } }
+function dartsHistSave(h) { localStorage.setItem(DARTS_HIST_KEY, JSON.stringify(h)); }
+function dartsGroupKey(names) { return names.slice().sort((a, b) => a.localeCompare(b)).join(' · '); }
+function dartsRecordGame(game) {
+  const names = game.players.map(p => p.name);
+  if (names.length < 2 || game.winner == null) return;
+  const key = dartsGroupKey(names);
+  const h = dartsHistLoad();
+  if (!h[key]) h[key] = { players: names.slice().sort((a, b) => a.localeCompare(b)), games: [], wins: {} };
+  names.forEach(n => { if (h[key].wins[n] == null) h[key].wins[n] = 0; });
+  const winnerName = game.players[game.winner].name;
+  h[key].wins[winnerName] = (h[key].wins[winnerName] || 0) + 1;
+  h[key].games.unshift({ date: Date.now(), start: game.start, winner: winnerName, scores: game.players.map(p => ({ name: p.name, score: p.score })) });
+  dartsHistSave(h);
+}
+function dartsUnrecordLast(game) {
+  const names = game.players.map(p => p.name);
+  const key = dartsGroupKey(names);
+  const h = dartsHistLoad();
+  if (h[key] && h[key].games.length) {
+    const removed = h[key].games.shift();
+    if (removed && h[key].wins[removed.winner] > 0) h[key].wins[removed.winner]--;
+    dartsHistSave(h);
+  }
+}
+function openDartsHistory() {
+  const h = dartsHistLoad();
+  const keys = Object.keys(h).sort((a, b) => h[b].games.length - h[a].games.length);
+  const fmtDate = (ts) => { const d = new Date(ts); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(2)}`; };
+  let body;
+  if (!keys.length) {
+    body = `<h2>🏆 Storico freccette</h2><p class="muted" style="text-align:center;padding:24px 6px">Ancora nessuna partita registrata.<br>Gioca fino alla vittoria e il gruppo comparirà qui con la sua classifica.</p><button class="btn primary full" id="dhClose">Chiudi</button>`;
+  } else {
+    body = `<h2>🏆 Storico freccette</h2><p class="muted" style="margin:-6px 0 12px">Un gruppo per ogni combinazione di sfidanti.</p>` + keys.map(k => {
+      const g = h[k];
+      const standings = Object.keys(g.wins).sort((a, b) => g.wins[b] - g.wins[a]);
+      const top = g.wins[standings[0]] || 0;
+      return `<div class="dh-group">
+        <div class="dh-gtitle">${escapeHtml(g.players.join(' · '))}<span>${g.games.length} ${g.games.length === 1 ? 'partita' : 'partite'}</span></div>
+        <div class="dh-standings">
+          ${standings.map((n, i) => { const lead = g.wins[n] === top && top > 0; return `<div class="dh-row ${lead ? 'lead' : ''}"><span class="dh-pos">${lead ? '👑' : (i + 1) + '°'}</span><span class="dh-name">${escapeHtml(n)}</span><span class="dh-w"><b>${g.wins[n]}</b> <small>vitt.</small></span></div>`; }).join('')}
+        </div>
+        <details class="dh-games"><summary>Tutte le partite (${g.games.length})</summary>
+          ${g.games.map(gm => `<div class="dh-game"><span>🏆 <b>${escapeHtml(gm.winner)}</b></span><span class="muted">${fmtDate(gm.date)} · ${gm.start}</span></div>`).join('')}
+        </details>
+      </div>`;
+    }).join('') + `<button class="btn primary full" id="dhClose" style="margin-top:14px">Chiudi</button>`;
+  }
+  const bg = openModal(body, (modal, close) => { const c = modal.querySelector('#dhClose'); if (c) c.onclick = close; });
+  bg.style.zIndex = 140;
+}
+
 function openDarts() {
   const overlay = document.createElement('div');
   overlay.className = 'darts-overlay';
@@ -2221,6 +2275,10 @@ function openDarts() {
             <span class="dr-ic">↩︎</span>
             <span class="dr-tx"><b>Ripristina partita precedente</b><small>${escapeHtml(bkInfo)}</small></span>
           </button>` : ''}
+          <button class="darts-restore dh-open" id="dHistory">
+            <span class="dr-ic">🏆</span>
+            <span class="dr-tx"><b>Storico &amp; classifiche</b><small>Vittorie per gruppo di sfidanti</small></span>
+          </button>
           <div class="darts-section-lbl">Punti a partita</div>
           <div class="darts-chips">
             ${preset.map(v => `<button class="darts-chip ${setupStart === v ? 'active' : ''}" data-start="${v}">${v}</button>`).join('')}
@@ -2251,6 +2309,7 @@ function openDarts() {
       </div>`;
 
     overlay.querySelector('[data-x]').onclick = close;
+    overlay.querySelector('#dHistory').onclick = openDartsHistory;
     const restoreBtn = overlay.querySelector('#dRestore');
     if (restoreBtn) restoreBtn.onclick = () => {
       const b = dartsBackupLoad();
@@ -2328,6 +2387,7 @@ function openDarts() {
             <div class="dw-trophy">🏆</div>
             <div><b>${escapeHtml(game.players[game.winner].name)}</b> ha vinto!</div>
             <button class="btn ghost" id="dWinChart">📈 Vedi grafico</button>
+            <button class="btn ghost" id="dWinHist">🏆 Classifiche</button>
             <button class="btn primary" id="dWinNew">Nuova partita</button>
           </div>` : ''}
         <div class="darts-scroll">
@@ -2387,6 +2447,8 @@ function openDarts() {
     if (winNew) winNew.onclick = () => { try { window.Darts3D && window.Darts3D.unmount(); } catch (e) {} dartsBackupSave(game); game.active = false; renderSetup(); };
     const winChart = overlay.querySelector('#dWinChart');
     if (winChart) winChart.onclick = () => openDartsChart(game);
+    const winHist = overlay.querySelector('#dWinHist');
+    if (winHist) winHist.onclick = openDartsHistory;
 
     // ── monta il tabellone 3D nel suo slot persistente (con retry finché il modulo è pronto) ──
     const _slot = overlay.querySelector('#d3dSlot');
@@ -2473,7 +2535,10 @@ function openDarts() {
     } else {
       p.score = remaining;
       p.throws.push(points);
-      if (remaining === 0) game.winner = pi;
+      if (remaining === 0) {
+        game.winner = pi;
+        if (!game.recorded) { dartsRecordGame(game); game.recorded = true; }  // salva nello storico del gruppo
+      }
     }
     game.log.push({ pi, points, busted });
     if (game.winner == null) game.turn = (game.turn + 1) % game.players.length;
@@ -2483,6 +2548,7 @@ function openDarts() {
 
   function undo() {
     if (!game.log.length) { toast('Niente da annullare'); return; }
+    if (game.recorded) { dartsUnrecordLast(game); game.recorded = false; }  // annulla la vittoria registrata
     const mv = game.log.pop();
     const p = game.players[mv.pi];
     if (!mv.busted) { p.score += mv.points; p.throws.pop(); }
