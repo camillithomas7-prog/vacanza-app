@@ -2214,7 +2214,7 @@ function dartsUnrecordLast(game) {
 }
 function openDartsHistory() {
   const h = dartsHistLoad();
-  const keys = Object.keys(h).sort((a, b) => h[b].games.length - h[a].games.length);
+  const keys = Object.keys(h).filter(k => h[k].games.length > 0).sort((a, b) => h[b].games.length - h[a].games.length);
   const fmtDate = (ts) => { const d = new Date(ts); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(2)}`; };
   let body;
   if (!keys.length) {
