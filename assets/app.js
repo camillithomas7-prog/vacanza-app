@@ -2260,6 +2260,34 @@ function openDartsHistory() {
   bg.style.zIndex = 140;
 }
 
+// Suggerimento di chiusura (checkout): come finire il punteggio rimanente finendo su un doppio.
+// Es. 36 -> "D18", 100 -> "T20 D20", 170 -> "T20 T20 Bull". '' se non chiudibile coi tiri rimasti.
+function dartsCheckout(R, dartsLeft) {
+  if (dartsLeft < 1 || R < 2 || R > 170) return '';
+  const dbl = (v) => v === 50 ? 'Bull' : (v % 2 === 0 && v / 2 >= 1 && v / 2 <= 20) ? 'D' + (v / 2) : null;
+  if (dbl(R)) return dbl(R);                 // chiusura in 1 freccia (doppio diretto)
+  if (dartsLeft < 2) return '';
+  // etichetta per una freccia di preparazione (preferisce singolo, poi 25/bull, poi triplo/doppio)
+  const setup = (v) => {
+    if (v >= 1 && v <= 20) return 'S' + v;
+    if (v === 25) return '25';
+    if (v === 50) return 'Bull';
+    if (v % 3 === 0 && v / 3 <= 20) return 'T' + (v / 3);
+    if (v % 2 === 0 && v / 2 <= 20) return 'D' + (v / 2);
+    return null;
+  };
+  // doppi finali in ordine di preferenza (i "comodi" prima)
+  const doubles = [40, 32, 16, 8, 4, 2, 36, 24, 20, 12, 28, 50, 6, 10, 14, 18, 22, 26, 30, 34, 38, 38];
+  [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 50].forEach(v => { if (!doubles.includes(v)) doubles.push(v); });
+  // 2 freccette: preparazione + doppio
+  for (const d of doubles) { const s = R - d; if (s > 0) { const sl = setup(s); if (sl) return sl + ' ' + dbl(d); } }
+  if (dartsLeft < 3) return '';
+  // 3 freccette: prima freccia più alta possibile, poi chiusura in 2
+  const leads = []; for (let i = 20; i >= 1; i--) leads.push(i * 3); leads.push(50, 25); for (let i = 20; i >= 1; i--) leads.push(i);
+  for (const a of leads) { const r = R - a; if (r >= 2) { const rest = dartsCheckout(r, 2); if (rest) { const al = setup(a); if (al) return al + ' ' + rest; } } }
+  return '';
+}
+
 function openDarts() {
   const overlay = document.createElement('div');
   overlay.className = 'darts-overlay';
@@ -2429,6 +2457,7 @@ function openDarts() {
         ${game.winner == null ? `
         <div class="darts-foot">
           <div class="darts-current">Turno di <b>${escapeHtml(cur.name)}</b> — gli restano <b id="dResto">${cur.score}</b> · 3 tiri</div>
+          <div class="dcheckout" id="dCheckout" style="display:none">🎯 Per chiudere: <b></b></div>
           <div class="dthrow">
             <span class="dslot" data-i="0">–</span>
             <span class="dslot" data-i="1">–</span>
@@ -2499,6 +2528,7 @@ function openDarts() {
       const restoEl = overlay.querySelector('#dResto');
       const actScoreEl = overlay.querySelector('#dActiveScore');
       const okBtn = overlay.querySelector('#dOk');
+      const coEl = overlay.querySelector('#dCheckout');
       function refresh() {
         slots.forEach((s, i) => {
           const has = darts[i] != null;
@@ -2520,6 +2550,12 @@ function openDarts() {
           actScoreEl.classList.toggle('bust', bust);
         }
         if (okBtn) okBtn.textContent = bust ? 'Sballato' : 'Conferma';
+        // consiglio di chiusura (checkout) sul rimanente live, con le freccette ancora disponibili
+        if (coEl) {
+          const co = (!bust && live >= 2) ? dartsCheckout(live, 3 - darts.length) : '';
+          coEl.style.display = co ? '' : 'none';
+          const cb = coEl.querySelector('b'); if (cb) cb.textContent = co;
+        }
       }
 
       multBtns.forEach(b => b.onclick = () => { mult = +b.dataset.m; refresh(); });
