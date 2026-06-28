@@ -2388,9 +2388,23 @@ function openDarts() {
     const winChart = overlay.querySelector('#dWinChart');
     if (winChart) winChart.onclick = () => openDartsChart(game);
 
-    // ── monta il tabellone 3D nel suo slot persistente ──
+    // ── monta il tabellone 3D nel suo slot persistente (con retry finché il modulo è pronto) ──
     const _slot = overlay.querySelector('#d3dSlot');
-    if (_slot) { _slot.appendChild(boardCanvas); if (window.Darts3D) { try { window.Darts3D.mount(boardCanvas); } catch (e) { console.warn('darts3d', e); } } }
+    if (_slot) {
+      _slot.appendChild(boardCanvas);
+      let _tries = 0;
+      const _mount = () => {
+        if (window.Darts3D) {
+          try { window.Darts3D.mount(boardCanvas); _slot.classList.add('ready'); }
+          catch (e) { console.warn('darts3d', e); _slot.style.display = 'none'; }
+        } else if (++_tries > 50) {
+          _slot.style.display = 'none';   // modulo non disponibile → niente riquadro nero
+        } else {
+          setTimeout(_mount, 120);
+        }
+      };
+      _mount();
+    }
 
     if (game.winner == null) {
       let darts = [];   // i 3 tiri di questo turno
