@@ -1391,21 +1391,23 @@ h1, h2, h3, h4 {
 .icon-btn.dcancel:hover{color:#ff5a4d}
 
 /* tabellone freccette neon (canvas 2D + tilt 3D) */
-.darts3d-wrap{flex:none;width:100%;height:clamp(165px,25vh,250px);position:relative;perspective:1000px;
+.darts3d-wrap{flex:none;width:100%;height:clamp(200px,33vh,320px);position:relative;perspective:1000px;
   background:radial-gradient(circle at 50% 42%,rgba(33,230,255,.07),transparent 68%)}
 .darts3d-wrap:not(.ready)::after{content:"";position:absolute;inset:0;
   display:flex;align-items:center;justify-content:center;color:#3f6f7a;font-size:12px}
 canvas.darts3d{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;
   transform:rotateX(13deg);transform-origin:center 58%}
 
-/* freccette: tastierino compatto (più spazio su mobile per board + giocatori) */
-.darts-foot{padding:8px 12px calc(8px + env(safe-area-inset-bottom))}
-.darts-current{font-size:12px;margin-bottom:6px}
-.dthrow{margin-bottom:6px}
-.dslot{min-width:40px;padding:5px 0;border-radius:8px}
-.dmult{margin-bottom:6px}
-.dm{padding:6px 0;font-size:12px;border-radius:8px}
-.dboard{gap:6px;margin:6px 0}
-.dnum{padding:7px 0;font-size:14px;border-radius:8px;min-height:0}
-.darts-foot .drow{margin-top:6px}
-.darts-foot .drow .btn{padding:11px}
+/* freccette: tastierino ultra-compatto (massimo spazio a board + giocatori) */
+.darts-foot{padding:5px 10px calc(6px + env(safe-area-inset-bottom))}
+.darts-current{font-size:11px;margin-bottom:4px}
+.dthrow{margin-bottom:4px;gap:6px}
+.dslot{min-width:32px;padding:3px 0;border-radius:7px;font-size:13px}
+.dthrow .dtot{font-size:12px}
+.dmult{margin-bottom:4px;gap:6px}
+.dm{padding:4px 0;font-size:11px;border-radius:7px}
+.dboard{gap:5px;margin:4px 0}
+.dnum{padding:4px 0;font-size:13px;border-radius:7px;min-height:0}
+.dnum.dbull,.dnum.dmiss{padding:6px 0}
+.darts-foot .drow{margin-top:5px;gap:6px}
+.darts-foot .drow .btn{padding:9px;font-size:13px}
