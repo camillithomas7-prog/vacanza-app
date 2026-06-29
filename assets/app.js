@@ -2245,18 +2245,20 @@ function dartsAggregate(rows) {
   return h;
 }
 // invia al server le partite ancora solo locali (migrazione una tantum per sessione)
-async function dartsPushLocal() {
-  if (sessionStorage.getItem('darts_pushed')) return;
+async function dartsPushLocal(force) {
+  if (!force && sessionStorage.getItem('darts_pushed')) return;
   const h = dartsHistLoad();
   const jobs = [];
   Object.keys(h).forEach(key => {
     const g = h[key];
     (g.games || []).forEach(gm => {
       const uid = gm.uid || ('L' + gm.date + '_' + gm.winner);
-      jobs.push(api('darts_record', { uid, group_key: key, players: g.players, start: gm.start, winner: gm.winner, played_at: gm.date, scores: gm.scores || [], best: gm.best || null, low: gm.low || null }).catch(() => {}));
+      jobs.push(api('darts_record', { uid, group_key: key, players: g.players, start: gm.start, winner: gm.winner, played_at: gm.date, scores: gm.scores || [], best: gm.best || null, low: gm.low || null }).then(() => true, () => false));
     });
   });
-  try { await Promise.all(jobs); sessionStorage.setItem('darts_pushed', '1'); } catch (e) {}
+  if (!jobs.length) { sessionStorage.setItem('darts_pushed', '1'); return; }
+  const results = await Promise.all(jobs);
+  if (results.every(Boolean)) sessionStorage.setItem('darts_pushed', '1');  // solo se TUTTE caricate, altrimenti riprova
 }
 async function openDartsHistory() {
   let h;
@@ -2272,9 +2274,9 @@ async function openDartsHistory() {
   const fmtDate = (ts) => { const d = new Date(ts); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(2)}`; };
   let body;
   if (!keys.length) {
-    body = `<h2>🏆 Storico freccette</h2><p class="muted" style="text-align:center;padding:24px 6px">Ancora nessuna partita registrata.<br>Gioca fino alla vittoria e il gruppo comparirà qui con la sua classifica.</p><button class="btn primary full" id="dhClose">Chiudi</button>`;
+    body = `<h2>🏆 Storico freccette</h2><p class="muted" style="text-align:center;padding:18px 6px 14px">Ancora nessuna partita su questo gruppo.<br>Se hai già giocato su questo telefono, tocca Sincronizza.</p><button class="btn ghost full" id="dhSync" style="margin-bottom:10px">🔄 Sincronizza questo telefono</button><button class="btn primary full" id="dhClose">Chiudi</button>`;
   } else {
-    body = `<h2>🏆 Storico freccette</h2><p class="muted" style="margin:-6px 0 12px">Un gruppo per ogni combinazione di sfidanti.</p>` + keys.map(k => {
+    body = `<h2>🏆 Storico freccette</h2><p class="muted" style="margin:-6px 0 10px">Un gruppo per ogni combinazione di sfidanti.</p><button class="btn ghost full" id="dhSync" style="margin-bottom:14px">🔄 Sincronizza questo telefono</button>` + keys.map(k => {
       const g = h[k];
       const standings = Object.keys(g.wins).sort((a, b) => g.wins[b] - g.wins[a]);
       const top = g.wins[standings[0]] || 0;
@@ -2300,7 +2302,15 @@ async function openDartsHistory() {
       </div>`;
     }).join('') + `<button class="btn primary full" id="dhClose" style="margin-top:14px">Chiudi</button>`;
   }
-  const bg = openModal(body, (modal, close) => { const c = modal.querySelector('#dhClose'); if (c) c.onclick = close; });
+  const bg = openModal(body, (modal, close) => {
+    const c = modal.querySelector('#dhClose'); if (c) c.onclick = close;
+    const sync = modal.querySelector('#dhSync');
+    if (sync) sync.onclick = async () => {
+      sync.disabled = true; sync.textContent = 'Sincronizzo…';
+      try { await dartsPushLocal(true); toast('Sincronizzato col gruppo'); } catch (e) { toast('Errore sync', true); }
+      close(); openDartsHistory();
+    };
+  });
   bg.style.zIndex = 140;
 }
 
@@ -3124,3 +3134,5 @@ async function openPokerLedger() {
 // ============ START ============
 initBgFx();
 boot();
+// appena l'app si apre, carica sul server eventuali partite freccette ancora solo locali
+dartsPushLocal().catch(() => {});
