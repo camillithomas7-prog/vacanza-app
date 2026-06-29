@@ -328,6 +328,19 @@ function create_schema_sqlite($pdo) {
       paid_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_poker_ledger_trip ON poker_ledger(trip_id);
+    CREATE TABLE IF NOT EXISTS darts_game (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trip_id INTEGER NOT NULL DEFAULT 1,
+      uid TEXT NOT NULL,
+      group_key TEXT NOT NULL,
+      players TEXT NOT NULL,
+      start INTEGER NOT NULL,
+      winner TEXT NOT NULL,
+      played_at INTEGER NOT NULL,
+      scores TEXT, best TEXT, low TEXT,
+      UNIQUE(trip_id, uid)
+    );
+    CREATE INDEX IF NOT EXISTS idx_darts_game_trip ON darts_game(trip_id);
   ");
 }
 
@@ -483,6 +496,20 @@ function create_schema_mysql($pdo) {
       paid TINYINT NOT NULL DEFAULT 0,
       paid_at DATETIME,
       INDEX idx_poker_ledger_trip (trip_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+    CREATE TABLE IF NOT EXISTS darts_game (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      trip_id INT NOT NULL DEFAULT 1,
+      uid VARCHAR(80) NOT NULL,
+      group_key VARCHAR(255) NOT NULL,
+      players TEXT NOT NULL,
+      start INT NOT NULL,
+      winner VARCHAR(120) NOT NULL,
+      played_at BIGINT NOT NULL,
+      scores TEXT, best TEXT, low TEXT,
+      UNIQUE KEY uq_darts_uid (trip_id, uid),
+      INDEX idx_darts_game_trip (trip_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   ");
 }

@@ -836,6 +836,40 @@ try {
       json_response(['ok' => true]);
     }
 
+    // ---------------- FRECCETTE: storico condiviso (no login: giocabile prima del login) ----------------
+    case 'darts_history': {
+      $rows = db()->query("SELECT uid, group_key, players, start, winner, played_at, scores, best, low FROM darts_game WHERE trip_id = 1 ORDER BY played_at DESC")->fetchAll();
+      json_response(['games' => $rows]);
+    }
+
+    case 'darts_record': {
+      $b = body();
+      $uid = trim((string)($b['uid'] ?? ''));
+      if ($uid === '') json_response(['error' => 'uid mancante'], 400);
+      $driver = driver_name(db());
+      $ins = $driver === 'sqlite' ? 'INSERT OR IGNORE' : 'INSERT IGNORE';
+      $stmt = db()->prepare("$ins INTO darts_game (trip_id, uid, group_key, players, start, winner, played_at, scores, best, low) VALUES (1,?,?,?,?,?,?,?,?,?)");
+      $stmt->execute([
+        $uid,
+        (string)($b['group_key'] ?? ''),
+        json_encode($b['players'] ?? [], JSON_UNESCAPED_UNICODE),
+        (int)($b['start'] ?? 0),
+        (string)($b['winner'] ?? ''),
+        (int)($b['played_at'] ?? 0),
+        json_encode($b['scores'] ?? [], JSON_UNESCAPED_UNICODE),
+        isset($b['best']) && $b['best'] !== null ? json_encode($b['best'], JSON_UNESCAPED_UNICODE) : null,
+        isset($b['low']) && $b['low'] !== null ? json_encode($b['low'], JSON_UNESCAPED_UNICODE) : null,
+      ]);
+      json_response(['ok' => true]);
+    }
+
+    case 'darts_unrecord': {
+      $b = body();
+      $uid = trim((string)($b['uid'] ?? ''));
+      if ($uid !== '') { $stmt = db()->prepare("DELETE FROM darts_game WHERE trip_id = 1 AND uid = ?"); $stmt->execute([$uid]); }
+      json_response(['ok' => true]);
+    }
+
     // ---------------- POKER (sezione a parte) ----------------
     case 'poker_get': {
       require_member();

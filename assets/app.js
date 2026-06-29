@@ -2205,12 +2205,14 @@ function dartsRecordGame(game) {
     if (best == null || v > best.val) best = { name: p.name, val: v };
     if (low == null || v < low.val) low = { name: p.name, val: v };
   }));
-  h[key].games.unshift({
-    date: Date.now(), start: game.start, winner: winnerName,
-    scores: game.players.map(p => ({ name: p.name, score: p.score })),
-    best, low
-  });
+  const date = Date.now();
+  const uid = 'D' + date + '_' + Math.random().toString(36).slice(2, 8);
+  const scores = game.players.map(p => ({ name: p.name, score: p.score }));
+  h[key].games.unshift({ uid, date, start: game.start, winner: winnerName, scores, best, low });
+  game._uid = uid;  // per poter annullare anche sul server con undo
   dartsHistSave(h);
+  // sincronizza sul server (storico condiviso tra tutti i dispositivi)
+  api('darts_record', { uid, group_key: key, players: names, start: game.start, winner: winnerName, played_at: date, scores, best, low }).catch(() => {});
 }
 function dartsUnrecordLast(game) {
   const names = game.players.map(p => p.name);
@@ -2218,12 +2220,54 @@ function dartsUnrecordLast(game) {
   const h = dartsHistLoad();
   if (h[key] && h[key].games.length) {
     const removed = h[key].games.shift();
-    if (removed && h[key].wins[removed.winner] > 0) h[key].wins[removed.winner]--;
+    if (removed) {
+      if (h[key].wins[removed.winner] > 0) h[key].wins[removed.winner]--;
+      const uid = removed.uid || game._uid;
+      if (uid) api('darts_unrecord', { uid }).catch(() => {});  // annulla anche sul server
+    }
     dartsHistSave(h);
   }
 }
-function openDartsHistory() {
+// aggrega le righe del server (storico condiviso) nella struttura per-gruppo
+function dartsAggregate(rows) {
+  const h = {};
+  const parse = (x) => { if (x == null) return null; if (typeof x !== 'string') return x; try { return JSON.parse(x); } catch (e) { return null; } };
+  (rows || []).forEach(r => {
+    const players = parse(r.players) || [];
+    if (players.length < 2) return;
+    const key = r.group_key || dartsGroupKey(players);
+    if (!h[key]) h[key] = { players: players.slice().sort((a, b) => a.localeCompare(b)), games: [], wins: {} };
+    players.forEach(n => { if (h[key].wins[n] == null) h[key].wins[n] = 0; });
+    if (r.winner) h[key].wins[r.winner] = (h[key].wins[r.winner] || 0) + 1;
+    h[key].games.push({ uid: r.uid, date: +r.played_at, start: +r.start, winner: r.winner, best: parse(r.best), low: parse(r.low) });
+  });
+  Object.values(h).forEach(g => g.games.sort((a, b) => b.date - a.date));
+  return h;
+}
+// invia al server le partite ancora solo locali (migrazione una tantum per sessione)
+async function dartsPushLocal() {
+  if (sessionStorage.getItem('darts_pushed')) return;
   const h = dartsHistLoad();
+  const jobs = [];
+  Object.keys(h).forEach(key => {
+    const g = h[key];
+    (g.games || []).forEach(gm => {
+      const uid = gm.uid || ('L' + gm.date + '_' + gm.winner);
+      jobs.push(api('darts_record', { uid, group_key: key, players: g.players, start: gm.start, winner: gm.winner, played_at: gm.date, scores: gm.scores || [], best: gm.best || null, low: gm.low || null }).catch(() => {}));
+    });
+  });
+  try { await Promise.all(jobs); sessionStorage.setItem('darts_pushed', '1'); } catch (e) {}
+}
+async function openDartsHistory() {
+  let h;
+  try {
+    await dartsPushLocal();                       // migra eventuali partite locali
+    const res = await api('darts_history');       // storico CONDIVISO dal server
+    h = dartsAggregate(res.games || []);
+    dartsHistSave(h);                             // aggiorna cache locale
+  } catch (e) {
+    h = dartsHistLoad();                          // offline → cache locale
+  }
   const keys = Object.keys(h).filter(k => h[k].games.length > 0).sort((a, b) => h[b].games.length - h[a].games.length);
   const fmtDate = (ts) => { const d = new Date(ts); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(2)}`; };
   let body;
