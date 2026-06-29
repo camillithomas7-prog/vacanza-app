@@ -2471,6 +2471,12 @@ function openDarts() {
     order.forEach((o, idx) => { if (prev === null || o.score !== prev) { r = idx + 1; prev = o.score; } rankOf[o.i] = r; });
     const started = game.players.some(p => p.throws.length);
     const leaderIdx = (started && order.length > 1 && order[0].score < order[1].score) ? order[0].i : -1;
+    // colore per giocatore + statistiche (media a 3 freccette, ultimo, freccette tirate)
+    const pcolor = (p, i) => avatarColor(p.id || i + 1);
+    const stat = game.players.map(p => {
+      const turns = p.throws.length, scored = game.start - p.score;
+      return { avg: turns ? scored / turns : 0, last: turns ? p.throws[turns - 1] : null, darts: turns * 3 };
+    });
 
     overlay.innerHTML = `
       <div class="darts-sheet">
@@ -2485,21 +2491,23 @@ function openDarts() {
           </div>
         </div>
         <div class="darts-standings" id="dStandings">
-          <button class="ds-toggle" id="dStandToggle">
-            <span class="ds-lead">📊 Classifica${leaderIdx >= 0 ? ` · 👑 ${escapeHtml(game.players[leaderIdx].name)}` : ` · ${game.players.length} giocatori`}</span>
-            <span class="ds-chev">▾</span>
+          <button class="ds-toggle" id="dStandToggle" style="--pc:${pcolor(cur, game.turn)}">
+            <span class="ds-lead"><span class="ds-dot"></span>${escapeHtml(cur.name)} <b id="dBarScore">${cur.score}</b></span>
+            <span class="ds-chev">Classifica <i>▾</i></span>
           </button>
           <div class="ds-panel">
-            <div class="darts-players">
+            <div class="dp-cards">
               ${game.players.map((p, i) => {
                 const active = i === game.turn && game.winner == null;
-                const last = p.throws.length ? p.throws[p.throws.length - 1] : null;
-                const badge = i === leaderIdx ? '👑' : `${rankOf[i]}°`;
-                return `<div class="darts-player ${active ? 'active' : ''} ${p.score === 0 ? 'won' : ''}">
-                  <span class="dp-rank ${i === leaderIdx ? 'leader' : ''}">${badge}</span>
-                  ${avatarHTML(p, 34)}
-                  <div class="dp-name">${escapeHtml(p.name)}${last != null ? `<span class="dp-last">ultimo −${last}</span>` : ''}</div>
-                  <div class="dp-score"${active ? ' id="dActiveScore"' : ''}>${p.score}</div>
+                const s = stat[i];
+                return `<div class="dp-card ${active ? 'active' : ''} ${p.score === 0 ? 'won' : ''}" style="--pc:${pcolor(p, i)}">
+                  <div class="dpc-top">${avatarHTML(p, 28)}<span class="dpc-name">${escapeHtml(p.name)}</span><span class="dpc-badge">${i === leaderIdx ? '👑' : rankOf[i] + '°'}</span></div>
+                  <div class="dpc-score"${active ? ' id="dActiveScore"' : ''}>${p.score}</div>
+                  <div class="dpc-stats">
+                    <div><span>Media 3</span><b>${s.avg.toFixed(1)}</b></div>
+                    <div><span>Ultimo</span><b>${s.last == null ? '–' : s.last}</b></div>
+                    <div><span>Freccette</span><b>${s.darts}</b></div>
+                  </div>
                 </div>`;
               }).join('')}
             </div>
@@ -2589,6 +2597,7 @@ function openDarts() {
 
       const restoEl = overlay.querySelector('#dResto');
       const actScoreEl = overlay.querySelector('#dActiveScore');
+      const barEl = overlay.querySelector('#dBarScore');
       const okBtn = overlay.querySelector('#dOk');
       const coEl = overlay.querySelector('#dCheckout');
       function refresh() {
@@ -2611,6 +2620,7 @@ function openDarts() {
           actScoreEl.textContent = bust ? cur.score : live;   // se sballa mostra di nuovo quello di partenza
           actScoreEl.classList.toggle('bust', bust);
         }
+        if (barEl) barEl.textContent = bust ? cur.score : live;
         if (okBtn) okBtn.textContent = bust ? 'Sballato' : 'Conferma';
         // consiglio di chiusura (checkout) sul rimanente live, con le freccette ancora disponibili
         if (coEl) {
