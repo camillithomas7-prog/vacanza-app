@@ -2484,6 +2484,27 @@ function openDarts() {
             <button class="icon-btn" data-x aria-label="Chiudi">✕</button>
           </div>
         </div>
+        <div class="darts-standings" id="dStandings">
+          <button class="ds-toggle" id="dStandToggle">
+            <span class="ds-lead">📊 Classifica${leaderIdx >= 0 ? ` · 👑 ${escapeHtml(game.players[leaderIdx].name)}` : ` · ${game.players.length} giocatori`}</span>
+            <span class="ds-chev">▾</span>
+          </button>
+          <div class="ds-panel">
+            <div class="darts-players">
+              ${game.players.map((p, i) => {
+                const active = i === game.turn && game.winner == null;
+                const last = p.throws.length ? p.throws[p.throws.length - 1] : null;
+                const badge = i === leaderIdx ? '👑' : `${rankOf[i]}°`;
+                return `<div class="darts-player ${active ? 'active' : ''} ${p.score === 0 ? 'won' : ''}">
+                  <span class="dp-rank ${i === leaderIdx ? 'leader' : ''}">${badge}</span>
+                  ${avatarHTML(p, 34)}
+                  <div class="dp-name">${escapeHtml(p.name)}${last != null ? `<span class="dp-last">ultimo −${last}</span>` : ''}</div>
+                  <div class="dp-score"${active ? ' id="dActiveScore"' : ''}>${p.score}</div>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>
+        </div>
         <div class="darts3d-wrap" id="d3dSlot"></div>
         ${game.winner != null ? `
           <div class="darts-winner">
@@ -2493,21 +2514,6 @@ function openDarts() {
             <button class="btn ghost" id="dWinHist">🏆 Classifiche</button>
             <button class="btn primary" id="dWinNew">Nuova partita</button>
           </div>` : ''}
-        <div class="darts-scroll">
-          <div class="darts-players">
-            ${game.players.map((p, i) => {
-              const active = i === game.turn && game.winner == null;
-              const last = p.throws.length ? p.throws[p.throws.length - 1] : null;
-              const badge = i === leaderIdx ? '👑' : `${rankOf[i]}°`;
-              return `<div class="darts-player ${active ? 'active' : ''} ${p.score === 0 ? 'won' : ''}">
-                <span class="dp-rank ${i === leaderIdx ? 'leader' : ''}">${badge}</span>
-                ${avatarHTML(p, 34)}
-                <div class="dp-name">${escapeHtml(p.name)}${last != null ? `<span class="dp-last">ultimo −${last}</span>` : ''}</div>
-                <div class="dp-score"${active ? ' id="dActiveScore"' : ''}>${p.score}</div>
-              </div>`;
-            }).join('')}
-          </div>
-        </div>
         ${game.winner == null ? `
         <div class="darts-foot">
           <div class="darts-current">Turno di <b>${escapeHtml(cur.name)}</b> — gli restano <b id="dResto">${cur.score}</b> · 3 tiri</div>
@@ -2538,6 +2544,8 @@ function openDarts() {
 
     overlay.querySelector('[data-x]').onclick = close;
     overlay.querySelector('#dUndo').onclick = undo;
+    const standToggle = overlay.querySelector('#dStandToggle');
+    if (standToggle) standToggle.onclick = () => overlay.querySelector('#dStandings').classList.toggle('open');
     overlay.querySelector('#dChart').onclick = () => openDartsChart(game);
     overlay.querySelector('#dNew').onclick = () => {
       if (confirm('Iniziare una nuova partita? Quella attuale verrà persa.')) { try { window.Darts3D && window.Darts3D.unmount(); } catch (e) {} dartsBackupSave(game); game.active = false; renderSetup(); }
@@ -2615,6 +2623,7 @@ function openDarts() {
       multBtns.forEach(b => b.onclick = () => { mult = +b.dataset.m; refresh(); });
 
       overlay.querySelectorAll('.dnum').forEach(b => b.onclick = () => {
+        overlay.querySelector('#dStandings')?.classList.remove('open');  // chiudi la tendina quando metti i punti
         if (darts.length >= 3) { toast('Hai già fatto 3 tiri — premi Conferma', true); return; }
         const base = +b.dataset.v;
         const val = b.hasAttribute('data-fixed') ? base : base * mult; // 25/50/Miss senza moltiplicatore
