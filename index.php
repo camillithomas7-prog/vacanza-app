@@ -23,6 +23,7 @@ header('Cache-Control: no-cache, must-revalidate');
 
   <!-- Tabellone freccette neon (canvas 2D leggero, carica all'istante) -->
   <script src="assets/dartsboard.js?v=<?= @filemtime(__DIR__ . '/assets/dartsboard.js') ?: time() ?>"></script>
+  <script src="assets/dartsfx.js?v=<?= @filemtime(__DIR__ . '/assets/dartsfx.js') ?: time() ?>"></script>
 
   <title>Vacanza</title>
 </head>

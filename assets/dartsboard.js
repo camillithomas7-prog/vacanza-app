@@ -129,6 +129,14 @@
       S.resize();
     },
     hit(number, mult) { if (S) addDart(number, mult); },
+    celebrate() {
+      if (!S) return;
+      for (let i = 0; i < 7; i++) {
+        const x = S.cx + (Math.random() - 0.5) * S.w * 0.62;
+        const y = S.cy + (Math.random() - 0.5) * S.h * 0.45;
+        addBurst(x, y, 'T');
+      }
+    },
     unmount() { if (!S) return; if (S.raf) cancelAnimationFrame(S.raf); if (S.ro) S.ro.disconnect(); S = null; }
   };
   window.Darts3D = API;

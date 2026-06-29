@@ -2483,6 +2483,7 @@ function openDarts() {
         <div class="darts-top">
           <div class="darts-title">🎯 ${game.start}</div>
           <div class="row gap">
+            <button class="icon-btn" id="dMute" title="Suoni">${(window.DartsFX && DartsFX.muted) ? '🔇' : '🔊'}</button>
             <button class="icon-btn" id="dChart" title="Grafico partita">📈</button>
             <button class="icon-btn" id="dUndo" title="Annulla ultimo tiro">↺</button>
             <button class="icon-btn" id="dNew" title="Nuova partita">⟲</button>
@@ -2554,6 +2555,8 @@ function openDarts() {
     overlay.querySelector('#dUndo').onclick = undo;
     const standToggle = overlay.querySelector('#dStandToggle');
     if (standToggle) standToggle.onclick = () => overlay.querySelector('#dStandings').classList.toggle('open');
+    const muteBtn = overlay.querySelector('#dMute');
+    if (muteBtn) muteBtn.onclick = () => { const m = window.DartsFX ? DartsFX.toggleMute() : true; muteBtn.textContent = m ? '🔇' : '🔊'; toast(m ? 'Suoni disattivati' : 'Suoni attivi'); };
     overlay.querySelector('#dChart').onclick = () => openDartsChart(game);
     overlay.querySelector('#dNew').onclick = () => {
       if (confirm('Iniziare una nuova partita? Quella attuale verrà persa.')) { try { window.Darts3D && window.Darts3D.unmount(); } catch (e) {} dartsBackupSave(game); game.active = false; renderSetup(); }
@@ -2633,6 +2636,7 @@ function openDarts() {
       multBtns.forEach(b => b.onclick = () => { mult = +b.dataset.m; refresh(); });
 
       overlay.querySelectorAll('.dnum').forEach(b => b.onclick = () => {
+        window.DartsFX && DartsFX.ensure();
         overlay.querySelector('#dStandings')?.classList.remove('open');  // chiudi la tendina quando metti i punti
         if (darts.length >= 3) { toast('Hai già fatto 3 tiri — premi Conferma', true); return; }
         const base = +b.dataset.v;
@@ -2642,6 +2646,7 @@ function openDarts() {
           const mc = base === 50 ? 'B' : base === 25 ? '25' : base === 0 ? 'M' : (mult === 3 ? 'T' : mult === 2 ? 'D' : 'S');
           try { window.Darts3D.hit(base, mc); } catch (e) {}
         }
+        if (window.DartsFX) { if (base === 50) DartsFX.bull(); else if (base !== 0) DartsFX.hit(); }
         darts.push(val);
         mult = 1; // si riparte da Singolo dopo ogni freccia
         refresh();
@@ -2672,8 +2677,18 @@ function openDarts() {
     }
     game.log.push({ pi, points, busted });
     if (game.winner == null) game.turn = (game.turn + 1) % game.players.length;
+    // ── annunci sonori/visivi del turno ──
+    if (window.DartsFX) {
+      if (game.winner === pi) DartsFX.win(p.name);
+      else if (busted) DartsFX.callout('SBALLO!', 'bust');
+      else if (points === 180) DartsFX.callout('180!', '180');
+      else if (points >= 100) DartsFX.callout('TON ' + points + '!', 'ton');
+      else if (points >= 60) DartsFX.callout('', 'good');
+    }
     dartsSave(game);
     renderGame();
+    if (game.winner === pi && window.Darts3D && window.Darts3D.celebrate)
+      setTimeout(() => { try { window.Darts3D.celebrate(); } catch (e) {} }, 90);
   }
 
   function undo() {
