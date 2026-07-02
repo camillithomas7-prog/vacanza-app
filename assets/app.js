@@ -2431,6 +2431,19 @@ function openDartsRules(start) {
   document.body.appendChild(ov);
 }
 
+// Icone SVG del pannello freccette (tratto coerente, niente emoji)
+const DART_ICO = `<svg class="dt-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#12151c" stroke="#39404d"/><circle cx="12" cy="12" r="6.9" fill="none" stroke="#d92b3e" stroke-width="2.3"/><circle cx="12" cy="12" r="3.6" fill="none" stroke="#e7dcc3" stroke-width="2.1"/><circle cx="12" cy="12" r="1.35" fill="#0fa568"/></svg>`;
+const DI = {
+  help: '<svg viewBox="0 0 24 24"><path d="M9.2 9.2a2.9 2.9 0 1 1 4.1 2.6c-.9.4-1.3 1-1.3 1.9v.5"/><circle cx="12" cy="17.7" r=".7" fill="currentColor" stroke="none"/></svg>',
+  soundOn: '<svg viewBox="0 0 24 24"><path d="M4.5 10v4h2.8l3.9 3.4V6.6L7.3 10H4.5z"/><path d="M14.8 9.6a3.4 3.4 0 0 1 0 4.8"/><path d="M17.2 7.4a6.6 6.6 0 0 1 0 9.2"/></svg>',
+  soundOff: '<svg viewBox="0 0 24 24"><path d="M4.5 10v4h2.8l3.9 3.4V6.6L7.3 10H4.5z"/><path d="M15.2 9.8l4.6 4.4M19.8 9.8l-4.6 4.4"/></svg>',
+  chart: '<svg viewBox="0 0 24 24"><path d="M4.5 18.5h15"/><path d="M6 14.8l4-4.6 3.4 2.9 5-6"/></svg>',
+  undo: '<svg viewBox="0 0 24 24"><path d="M8.6 7.2h6.2a4.4 4.4 0 0 1 0 8.8H7.4"/><path d="M11.2 4 7.6 7.2l3.6 3.2"/></svg>',
+  renew: '<svg viewBox="0 0 24 24"><path d="M18.9 12a6.9 6.9 0 1 1-2-4.9"/><path d="M17.6 3.8v3.5H14"/></svg>',
+  trash: '<svg viewBox="0 0 24 24"><path d="M5.5 7h13M10 7V5.6A1.6 1.6 0 0 1 11.6 4h.8A1.6 1.6 0 0 1 14 5.6V7m3.6 0-.7 11.4a1.6 1.6 0 0 1-1.6 1.6H8.7a1.6 1.6 0 0 1-1.6-1.6L6.4 7"/><path d="M10.2 10.5v5.5M13.8 10.5v5.5"/></svg>',
+  x: '<svg viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>',
+};
+
 function openDarts() {
   const overlay = document.createElement('div');
   overlay.className = 'darts-overlay';
@@ -2459,8 +2472,8 @@ function openDarts() {
     overlay.innerHTML = `
       <div class="darts-sheet">
         <div class="darts-top">
-          <div class="darts-title">🎯 Freccette</div>
-          <button class="icon-btn" data-x aria-label="Chiudi">✕</button>
+          <div class="darts-title">${DART_ICO}<span>Freccette</span></div>
+          <button class="icon-btn dx" data-x aria-label="Chiudi">${DI.x}</button>
         </div>
         <div class="darts-scroll">
           ${bk ? `<button class="darts-restore" id="dRestore">
@@ -2570,15 +2583,15 @@ function openDarts() {
     overlay.innerHTML = `
       <div class="darts-sheet">
         <div class="darts-top">
-          <div class="darts-title">🎯 ${game.start} <span class="dt-mode">Double out</span></div>
-          <div class="row gap">
-            <button class="icon-btn" id="dRules" title="Regole ufficiali">?</button>
-            <button class="icon-btn" id="dMute" title="Suoni">${(window.DartsFX && DartsFX.muted) ? '🔇' : '🔊'}</button>
-            <button class="icon-btn" id="dChart" title="Grafico partita">📈</button>
-            <button class="icon-btn" id="dUndo" title="Annulla ultimo tiro">↺</button>
-            <button class="icon-btn" id="dNew" title="Nuova partita">⟲</button>
-            <button class="icon-btn dcancel" id="dCancel" title="Annulla partita">🗑️</button>
-            <button class="icon-btn" data-x aria-label="Chiudi">✕</button>
+          <div class="darts-title">${DART_ICO}<span>${game.start}</span><span class="dt-mode">Double out</span></div>
+          <div class="row gap darts-tools">
+            <button class="icon-btn" id="dRules" title="Regole ufficiali">${DI.help}</button>
+            <button class="icon-btn" id="dMute" title="Suoni">${(window.DartsFX && DartsFX.muted) ? DI.soundOff : DI.soundOn}</button>
+            <button class="icon-btn" id="dChart" title="Grafico partita">${DI.chart}</button>
+            <button class="icon-btn" id="dUndo" title="Annulla ultimo tiro">${DI.undo}</button>
+            <button class="icon-btn" id="dNew" title="Nuova partita">${DI.renew}</button>
+            <button class="icon-btn dcancel" id="dCancel" title="Annulla partita">${DI.trash}</button>
+            <button class="icon-btn dx" data-x aria-label="Chiudi">${DI.x}</button>
           </div>
         </div>
         <div class="darts-standings" id="dStandings">
@@ -2648,7 +2661,7 @@ function openDarts() {
     const standToggle = overlay.querySelector('#dStandToggle');
     if (standToggle) standToggle.onclick = () => overlay.querySelector('#dStandings').classList.toggle('open');
     const muteBtn = overlay.querySelector('#dMute');
-    if (muteBtn) muteBtn.onclick = () => { const m = window.DartsFX ? DartsFX.toggleMute() : true; muteBtn.textContent = m ? '🔇' : '🔊'; toast(m ? 'Suoni disattivati' : 'Suoni attivi'); };
+    if (muteBtn) muteBtn.onclick = () => { const m = window.DartsFX ? DartsFX.toggleMute() : true; muteBtn.innerHTML = m ? DI.soundOff : DI.soundOn; toast(m ? 'Suoni disattivati' : 'Suoni attivi'); };
     overlay.querySelector('#dChart').onclick = () => openDartsChart(game);
     overlay.querySelector('#dNew').onclick = () => {
       if (confirm('Iniziare una nuova partita? Quella attuale verrà persa.')) { try { window.Darts3D && window.Darts3D.unmount(); } catch (e) {} dartsBackupSave(game); game.active = false; renderSetup(); }
