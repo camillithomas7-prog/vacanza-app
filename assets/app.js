@@ -2361,6 +2361,76 @@ function dartsCheckout(R, dartsLeft) {
   return '';
 }
 
+// Un segmento è un "doppio" valido per la chiusura? (anello doppio D1–D20 oppure bull centrale 50)
+function dartsIsDouble(seg) { return !!seg && (seg.charAt(0) === 'D' || seg === '50'); }
+
+// Valuta un turno secondo le REGOLE UFFICIALI X01 con doppio d'uscita (double-out).
+// vals = valori delle freccette (es. [60,32,0]); segsArr = segmenti (es. ['T20','D16','M']).
+// Ritorna { score, busted, won, reason }. Se busted, score = punteggio di INIZIO turno (annullato).
+function dartsEvalTurn(start, vals, segsArr) {
+  let s = start;
+  vals = vals || []; segsArr = segsArr || [];
+  for (let k = 0; k < vals.length; k++) {
+    const after = s - vals[k];
+    if (after < 0) return { score: start, busted: true, won: false, reason: 'hai sforato lo zero' };
+    if (after === 1) return { score: start, busted: true, won: false, reason: 'resti a 1 (non chiudibile: serve almeno un doppio, min. 2)' };
+    if (after === 0) {
+      if (dartsIsDouble(segsArr[k])) return { score: 0, busted: false, won: true, reason: '' };
+      return { score: start, busted: true, won: false, reason: 'sei arrivato a 0 senza chiudere con un doppio' };
+    }
+    s = after;
+  }
+  return { score: s, busted: false, won: false, reason: '' };
+}
+
+// Pannello "?" con le REGOLE UFFICIALI del gioco (X01 con doppio d'uscita).
+function openDartsRules(start) {
+  start = start || 501;
+  document.getElementById('dRulesOv')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'dRulesOv';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(6,8,16,.78);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:18px';
+  ov.innerHTML = `
+    <div style="max-width:520px;width:100%;max-height:88vh;overflow:auto;background:linear-gradient(160deg,#141a2e,#0d1120);border:1px solid rgba(120,140,255,.25);border-radius:20px;box-shadow:0 24px 80px -20px rgba(0,0,0,.7);color:#e7ecff;font-size:14.5px;line-height:1.6">
+      <div style="position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 20px;background:linear-gradient(160deg,#141a2e,#131829);border-bottom:1px solid rgba(120,140,255,.18)">
+        <b style="font-size:17px">🎯 Regole ufficiali — Freccette (X01)</b>
+        <button id="dRulesX" style="border:none;background:rgba(255,255,255,.08);color:#e7ecff;width:34px;height:34px;border-radius:10px;font-size:16px;cursor:pointer">✕</button>
+      </div>
+      <div style="padding:18px 20px">
+        <p style="margin:0 0 14px"><b>Obiettivo.</b> Ogni giocatore parte da <b>${start}</b> e deve arrivare <b>esattamente a 0</b>. Vince il primo che ci riesce rispettando il doppio d'uscita.</p>
+        <p style="margin:0 0 14px"><b>Turni.</b> Si tira a turno, <b>3 freccette</b> a testa; il punteggio del turno si <b>sottrae</b> dal totale che ti resta.</p>
+        <p style="margin:0 0 6px"><b>Le zone del bersaglio:</b></p>
+        <ul style="margin:0 0 14px;padding-left:20px">
+          <li><b>Singolo</b> = valore del numero.</li>
+          <li><b>Doppio</b> (anello esterno) = valore <b>×2</b>.</li>
+          <li><b>Triplo</b> (anello interno) = valore <b>×3</b>.</li>
+          <li><b>25</b> = bull esterno (verde). <b>50</b> = bull centrale (rosso), conta come <b>doppio</b>.</li>
+        </ul>
+        <div style="background:rgba(46,214,110,.12);border:1px solid rgba(46,214,110,.4);border-radius:14px;padding:14px 16px;margin:0 0 14px">
+          <b style="color:#41e28a">✅ Doppio d'uscita (double-out)</b><br>
+          L'<b>ultima freccetta</b> che ti porta a 0 <b>deve essere un doppio</b> (D1–D20) oppure il <b>bull rosso da 50</b>. Solo così vinci.
+        </div>
+        <div style="background:rgba(255,77,109,.1);border:1px solid rgba(255,77,109,.4);border-radius:14px;padding:14px 16px;margin:0 0 14px">
+          <b style="color:#ff6b81">❌ Sballo (bust)</b> — il turno <b>non conta</b> e torni al punteggio di inizio turno se:
+          <ul style="margin:8px 0 0;padding-left:20px">
+            <li>scendi <b>sotto 0</b> (sfori);</li>
+            <li>resti a <b>1</b> (non chiudibile: il doppio minimo è 2);</li>
+            <li>arrivi a <b>0 senza chiudere con un doppio</b>.</li>
+          </ul>
+        </div>
+        <div style="background:rgba(120,140,255,.1);border:1px solid rgba(120,140,255,.35);border-radius:14px;padding:14px 16px">
+          <b>📌 Esempio.</b> Ti restano <b>12</b>: per chiudere devi fare <b>Doppio 6 (D6)</b>.<br>
+          Se fai 12 in altro modo — es. <b>Singolo 12</b> o <b>Triplo 4</b> — vai in <b style="color:#ff6b81">SBALLO</b> e <b>non</b> hai vinto.<br>
+          <span style="opacity:.85">Nota: il <b>25</b> (bull esterno) <b>non</b> è un doppio, quindi non chiude; il <b>50</b> (bull rosso) sì.</span>
+        </div>
+      </div>
+    </div>`;
+  const close = () => ov.remove();
+  ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+  ov.querySelector('#dRulesX').onclick = close;
+  document.body.appendChild(ov);
+}
+
 function openDarts() {
   const overlay = document.createElement('div');
   overlay.className = 'darts-overlay';
@@ -2502,6 +2572,7 @@ function openDarts() {
         <div class="darts-top">
           <div class="darts-title">🎯 ${game.start}</div>
           <div class="row gap">
+            <button class="icon-btn" id="dRules" title="Regole ufficiali">?</button>
             <button class="icon-btn" id="dMute" title="Suoni">${(window.DartsFX && DartsFX.muted) ? '🔇' : '🔊'}</button>
             <button class="icon-btn" id="dChart" title="Grafico partita">📈</button>
             <button class="icon-btn" id="dUndo" title="Annulla ultimo tiro">↺</button>
@@ -2572,6 +2643,8 @@ function openDarts() {
 
     overlay.querySelector('[data-x]').onclick = close;
     overlay.querySelector('#dUndo').onclick = undo;
+    const rulesBtn = overlay.querySelector('#dRules');
+    if (rulesBtn) rulesBtn.onclick = () => openDartsRules(game.start);
     const standToggle = overlay.querySelector('#dStandToggle');
     if (standToggle) standToggle.onclick = () => overlay.querySelector('#dStandings').classList.toggle('open');
     const muteBtn = overlay.querySelector('#dMute');
@@ -2632,22 +2705,24 @@ function openDarts() {
         const sum = darts.reduce((a, b) => a + b, 0);
         sumEl.textContent = sum;
         multBtns.forEach(b => b.classList.toggle('active', +b.dataset.m === mult));
-        // ── il punteggio scala a ogni tiro; se sfora → SBALLO e torna a quello di prima ──
-        const live = cur.score - sum;
-        const bust = live < 0;
+        // ── valutazione ufficiale del turno (double-out): sballo se sfori, resti a 1, o chiudi senza doppio ──
+        const ev = dartsEvalTurn(cur.score, darts, segs);
+        const bust = ev.busted;
+        const shown = ev.busted ? 'SBALLO' : ev.won ? 'CHIUSO!' : ev.score;
         if (restoEl) {
-          restoEl.textContent = bust ? 'SBALLO' : live;
+          restoEl.textContent = shown;
           restoEl.classList.toggle('bust', bust);
+          restoEl.classList.toggle('win', ev.won);
         }
         if (actScoreEl) {
-          actScoreEl.textContent = bust ? cur.score : live;   // se sballa mostra di nuovo quello di partenza
+          actScoreEl.textContent = ev.busted ? cur.score : ev.score;   // se sballa mostra di nuovo quello di partenza
           actScoreEl.classList.toggle('bust', bust);
         }
-        if (barEl) barEl.textContent = bust ? cur.score : live;
-        if (okBtn) okBtn.textContent = bust ? 'Sballato' : 'Conferma';
+        if (barEl) barEl.textContent = ev.busted ? cur.score : ev.score;
+        if (okBtn) okBtn.textContent = ev.busted ? 'Sballato' : ev.won ? 'Chiudi 🏆' : 'Conferma';
         // consiglio di chiusura (checkout) sul rimanente live, con le freccette ancora disponibili
         if (coEl) {
-          const co = (!bust && live >= 2) ? dartsCheckout(live, 3 - darts.length) : '';
+          const co = (!bust && !ev.won && ev.score >= 2) ? dartsCheckout(ev.score, 3 - darts.length) : '';
           coEl.style.display = co ? '' : 'none';
           const cb = coEl.querySelector('b'); if (cb) cb.textContent = co;
         }
@@ -2673,12 +2748,12 @@ function openDarts() {
       });
 
       overlay.querySelector('#dBack').onclick = () => { darts.pop(); segs.pop(); mult = 1; refresh(); };
-      overlay.querySelector('#dOk').onclick = () => submit(darts.reduce((a, b) => a + b, 0), segs.slice());
+      overlay.querySelector('#dOk').onclick = () => submit(darts.reduce((a, b) => a + b, 0), segs.slice(), darts.slice());
       refresh();
     }
   }
 
-  function submit(points, turnSegs) {
+  function submit(points, turnSegs, turnDarts) {
     if (points < 0 || points > 180) { toast('Max 180 punti per turno', true); return; }
     const pi = game.turn;
     const p = game.players[pi];
@@ -2686,15 +2761,15 @@ function openDarts() {
     turnSegs = turnSegs || [];
     p.segCounts = p.segCounts || {};
     turnSegs.forEach(k => { p.segCounts[k] = (p.segCounts[k] || 0) + 1; });
-    const remaining = p.score - points;
-    let busted = false;
-    if (remaining < 0) {
-      busted = true;
-      toast(`Sballato! ${p.name} resta a ${p.score}`, true);
+    // ── REGOLE UFFICIALI X01 con doppio d'uscita (double-out) ──
+    const ev = dartsEvalTurn(p.score, turnDarts || [], turnSegs);
+    let busted = ev.busted;
+    if (busted) {
+      toast(`Sballato! ${p.name} resta a ${p.score} — ${ev.reason}`, true);
     } else {
-      p.score = remaining;
+      p.score = ev.score;
       p.throws.push(points);
-      if (remaining === 0) {
+      if (ev.won) {
         game.winner = pi;
         if (!game.recorded) { dartsRecordGame(game); game.recorded = true; }  // salva nello storico del gruppo
       }

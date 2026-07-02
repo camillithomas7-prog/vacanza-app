@@ -1388,6 +1388,7 @@ h1, h2, h3, h4 {
 
 /* freccette: punteggio in sballo + pulsante annulla partita */
 .dp-score.bust,#dResto.bust{color:#ff5a4d!important}
+#dResto.win{color:#41e28a!important}
 .icon-btn.dcancel:hover{color:#ff5a4d}
 
 /* tabellone freccette neon (canvas 2D + tilt 3D) */
