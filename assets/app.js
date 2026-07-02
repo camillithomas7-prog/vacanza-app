@@ -2342,42 +2342,11 @@ function dartsCheckout(R, dartsLeft) {
   return '';
 }
 
-// ---- Riconoscimento vocale freccette: interpreta una frase italiana ----
-// Ritorna { base, m, fixed } per una freccia, oppure { cmd } per un comando, o null.
-function dartsParseVoice(text) {
-  const t = (' ' + (text || '').toLowerCase() + ' ').replace(/[.,;:!?]/g, ' ');
-  const has = (re) => re.test(t);
-  // comandi
-  if (has(/\b(conferma|confermato|confermo|ok|okay|va bene|vai|chiudi|fine turno)\b/)) return { cmd: 'confirm' };
-  if (has(/\b(annulla|cancella|indietro|togli|elimina)\b/)) return { cmd: 'undo' };
-  const mt = t.match(/\btotale\s+(\d{1,3})\b/);
-  if (mt) return { cmd: 'total', total: +mt[1] };
-  // speciali (bull / mezzo bull / errore) — valutati prima dei numeri generici
-  if (has(/\b(cinquanta|bullseye|bull|toro|occhio di bue)\b/) || /\b50\b/.test(t)) return { base: 50, fixed: true };
-  if (has(/\b(venticinque|mezzo bull|bull piccolo)\b/) || /\b25\b/.test(t)) return { base: 25, fixed: true };
-  if (has(/\b(zero|niente|nullo|fuori|errore|mancato|miss)\b/)) return { base: 0, fixed: true };
-  // moltiplicatore
-  let m = 1;
-  if (has(/\b(triplo|tripla|triple)\b/)) m = 3;
-  else if (has(/\b(doppio|doppia|double)\b/)) m = 2;
-  else if (has(/\b(singolo|singola|single)\b/)) m = 1;
-  // numero 1-20 (cifra o parola)
-  const WORDS = { uno: 1, una: 1, due: 2, tre: 3, quattro: 4, cinque: 5, sei: 6, sette: 7, otto: 8, nove: 9, dieci: 10, undici: 11, dodici: 12, tredici: 13, quattordici: 14, quindici: 15, sedici: 16, diciassette: 17, diciotto: 18, diciannove: 19, venti: 20 };
-  let num = null;
-  const md = t.match(/\b(\d{1,2})\b/);
-  if (md) num = +md[1];
-  else { for (const w in WORDS) { if (new RegExp('\\b' + w + '\\b').test(t)) { num = WORDS[w]; break; } } }
-  if (num != null && num >= 1 && num <= 20) return { base: num, m };
-  return null;
-}
-
 function openDarts() {
   const overlay = document.createElement('div');
   overlay.className = 'darts-overlay';
   document.body.appendChild(overlay);
-  let voiceOn = false;   // microfono attivato dall'utente (persiste tra un turno e l'altro)
-  let voiceRec = null;   // istanza SpeechRecognition corrente
-  const close = () => { voiceOn = false; if (voiceRec) { try { voiceRec.onend = null; voiceRec.stop(); } catch (e) {} voiceRec = null; } try { window.Darts3D && window.Darts3D.unmount(); } catch (e) {} overlay.remove(); if (state.route === 'home') render(); };
+  const close = () => { try { window.Darts3D && window.Darts3D.unmount(); } catch (e) {} overlay.remove(); if (state.route === 'home') render(); };
 
   // canvas 3D persistente: montato una volta, riattaccato a ogni render (no flash, no perdita contesto WebGL)
   const boardCanvas = document.createElement('canvas');
@@ -2579,8 +2548,6 @@ function openDarts() {
             <button class="btn ghost" id="dBack">⌫ Annulla tiro</button>
             <button class="btn primary" id="dOk">Conferma</button>
           </div>
-          <button class="btn ghost dvoice" id="dVoice" style="width:100%;margin-top:8px">🎤 Segna a voce</button>
-          <div id="dVoiceHint" style="display:none;font-size:12px;opacity:.72;text-align:center;margin-top:6px;line-height:1.5">Di': «triplo venti» · «doppio 16» · «venti» · «venticinque» · «bull» · «conferma» · «annulla»</div>
         </div>` : ''}
       </div>`;
 
@@ -2668,24 +2635,19 @@ function openDarts() {
 
       multBtns.forEach(b => b.onclick = () => { mult = +b.dataset.m; refresh(); });
 
-      // ── aggiunge una freccia (condiviso tra tastiera e voce) ──
-      function addDart(base, m, fixed) {
+      overlay.querySelectorAll('.dnum').forEach(b => b.onclick = () => {
         window.DartsFX && DartsFX.ensure();
         overlay.querySelector('#dStandings')?.classList.remove('open');  // chiudi la tendina quando metti i punti
-        if (darts.length >= 3) { toast('Hai già fatto 3 tiri — premi Conferma', true); return false; }
-        const val = fixed ? base : base * m;  // 25/50/Miss senza moltiplicatore
+        if (darts.length >= 3) { toast('Hai già fatto 3 tiri — premi Conferma', true); return; }
+        const base = +b.dataset.v;
+        const val = b.hasAttribute('data-fixed') ? base : base * mult; // 25/50/Miss senza moltiplicatore
+        // ── effetto 3D: freccia che vola sul numero + esplosione ──
         if (window.Darts3D) {
-          const mc = base === 50 ? 'B' : base === 25 ? '25' : base === 0 ? 'M' : (m === 3 ? 'T' : m === 2 ? 'D' : 'S');
+          const mc = base === 50 ? 'B' : base === 25 ? '25' : base === 0 ? 'M' : (mult === 3 ? 'T' : mult === 2 ? 'D' : 'S');
           try { window.Darts3D.hit(base, mc); } catch (e) {}
         }
         if (window.DartsFX) { if (base === 50) DartsFX.bull(); else if (base !== 0) DartsFX.hit(); }
         darts.push(val);
-        return true;
-      }
-
-      overlay.querySelectorAll('.dnum').forEach(b => b.onclick = () => {
-        const base = +b.dataset.v;
-        addDart(base, mult, b.hasAttribute('data-fixed'));
         mult = 1; // si riparte da Singolo dopo ogni freccia
         refresh();
       });
@@ -2693,44 +2655,6 @@ function openDarts() {
       overlay.querySelector('#dBack').onclick = () => { darts.pop(); mult = 1; refresh(); };
       overlay.querySelector('#dOk').onclick = () => submit(darts.reduce((a, b) => a + b, 0));
       refresh();
-
-      // ── Controllo vocale (Web Speech API): segna i punti parlando ──
-      const voiceBtn = overlay.querySelector('#dVoice');
-      const voiceHint = overlay.querySelector('#dVoiceHint');
-      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) { if (voiceBtn) voiceBtn.style.display = 'none'; }   // browser senza supporto
-      else if (voiceBtn) {
-        const updBtn = () => {
-          voiceBtn.textContent = voiceOn ? '🔴 In ascolto… tocca per fermare' : '🎤 Segna a voce';
-          voiceBtn.style.background = voiceOn ? '#e5484d' : '';
-          voiceBtn.style.color = voiceOn ? '#fff' : '';
-          voiceBtn.style.borderColor = voiceOn ? '#e5484d' : '';
-          if (voiceHint) voiceHint.style.display = voiceOn ? '' : 'none';
-        };
-        const stopRec = () => { if (voiceRec) { try { voiceRec.onend = null; voiceRec.stop(); } catch (e) {} voiceRec = null; } };
-        const handleVoice = (text) => {
-          const r = dartsParseVoice(text);
-          if (!r) { toast('Non ho capito: “' + text.trim() + '”', true); return; }
-          if (r.cmd === 'confirm') { submit(darts.reduce((a, b) => a + b, 0)); return; }
-          if (r.cmd === 'undo') { if (darts.length) { darts.pop(); refresh(); toast('Tiro annullato'); } return; }
-          if (r.cmd === 'total') { if (r.total >= 0 && r.total <= 180) submit(r.total); else toast('Totale non valido', true); return; }
-          if (addDart(r.base, r.m || 1, !!r.fixed)) refresh();
-        };
-        const startRec = () => {
-          stopRec();
-          try {
-            voiceRec = new SR();
-            voiceRec.lang = 'it-IT'; voiceRec.continuous = true; voiceRec.interimResults = false; voiceRec.maxAlternatives = 1;
-            voiceRec.onresult = (e) => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) handleVoice(e.results[i][0].transcript); };
-            voiceRec.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { toast('Microfono negato dal browser', true); voiceOn = false; stopRec(); updBtn(); } };
-            voiceRec.onend = () => { if (voiceOn) { try { voiceRec.start(); } catch (e) {} } };  // riavvia se ancora attivo
-            voiceRec.start();
-          } catch (e) { toast('Voce non disponibile su questo browser', true); voiceOn = false; updBtn(); }
-        };
-        voiceBtn.onclick = () => { voiceOn = !voiceOn; if (voiceOn) { startRec(); toast('🎤 Parla: es. «triplo venti», poi «conferma»'); } else stopRec(); updBtn(); };
-        if (voiceOn) startRec();   // riprende l'ascolto dopo il cambio turno (re-render)
-        updBtn();
-      }
     }
   }
 
