@@ -2442,6 +2442,7 @@ const DI = {
   renew: '<svg viewBox="0 0 24 24"><path d="M18.9 12a6.9 6.9 0 1 1-2-4.9"/><path d="M17.6 3.8v3.5H14"/></svg>',
   trash: '<svg viewBox="0 0 24 24"><path d="M5.5 7h13M10 7V5.6A1.6 1.6 0 0 1 11.6 4h.8A1.6 1.6 0 0 1 14 5.6V7m3.6 0-.7 11.4a1.6 1.6 0 0 1-1.6 1.6H8.7a1.6 1.6 0 0 1-1.6-1.6L6.4 7"/><path d="M10.2 10.5v5.5M13.8 10.5v5.5"/></svg>',
   x: '<svg viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>',
+  dots: '<svg viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="18.5" r="1.5" fill="currentColor" stroke="none"/></svg>',
 };
 
 function openDarts() {
@@ -2585,12 +2586,17 @@ function openDarts() {
         <div class="darts-top">
           <div class="darts-title">${DART_ICO}<span>${game.start}</span><span class="dt-mode">Double out</span></div>
           <div class="row gap darts-tools">
-            <button class="icon-btn" id="dRules" title="Regole ufficiali">${DI.help}</button>
             <button class="icon-btn" id="dMute" title="Suoni">${(window.DartsFX && DartsFX.muted) ? DI.soundOff : DI.soundOn}</button>
-            <button class="icon-btn" id="dChart" title="Grafico partita">${DI.chart}</button>
-            <button class="icon-btn" id="dUndo" title="Annulla ultimo tiro">${DI.undo}</button>
-            <button class="icon-btn" id="dNew" title="Nuova partita">${DI.renew}</button>
-            <button class="icon-btn dcancel" id="dCancel" title="Annulla partita">${DI.trash}</button>
+            <button class="icon-btn" id="dUndo" title="Annulla ultimo turno">${DI.undo}</button>
+            <div class="dmenu-wrap">
+              <button class="icon-btn" id="dMenu" title="Altro" aria-haspopup="true">${DI.dots}</button>
+              <div class="dmenu" id="dMenuPanel">
+                <button id="dRules">${DI.help}<span>Regole ufficiali</span></button>
+                <button id="dChart">${DI.chart}<span>Grafico partita</span></button>
+                <button id="dNew">${DI.renew}<span>Nuova partita</span></button>
+                <button class="danger" id="dCancel">${DI.trash}<span>Annulla partita</span></button>
+              </div>
+            </div>
             <button class="icon-btn dx" data-x aria-label="Chiudi">${DI.x}</button>
           </div>
         </div>
@@ -2656,6 +2662,12 @@ function openDarts() {
 
     overlay.querySelector('[data-x]').onclick = close;
     overlay.querySelector('#dUndo').onclick = undo;
+    // menu ⋯ (regole, grafico, nuova, annulla) — così la barra respira anche sui telefoni stretti
+    const menuBtn = overlay.querySelector('#dMenu');
+    const menuPanel = overlay.querySelector('#dMenuPanel');
+    if (menuBtn) menuBtn.onclick = (e) => { e.stopPropagation(); menuPanel.classList.toggle('open'); };
+    if (menuPanel) menuPanel.querySelectorAll('button').forEach(b => b.addEventListener('click', () => menuPanel.classList.remove('open')));
+    overlay.onclick = (e) => { if (menuPanel && !e.target.closest('.dmenu-wrap')) menuPanel.classList.remove('open'); };
     const rulesBtn = overlay.querySelector('#dRules');
     if (rulesBtn) rulesBtn.onclick = () => openDartsRules(game.start);
     const standToggle = overlay.querySelector('#dStandToggle');
