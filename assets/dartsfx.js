@@ -51,7 +51,15 @@
     },
 
     // ---- eventi di gioco ----
-    hit() { if (this.muted) return; this.ensure(); this.noise(0, 0.09, 0.22); this.tone(150, 0, 0.08, 'square', 0.10); this.vibe(8); },
+    hit(kind) {
+      if (this.muted) return; this.ensure();
+      this.noise(0, 0.07, 0.24);                      // impatto sordo sul sisal
+      this.tone(96, 0, 0.09, 'sine', 0.14);           // corpo del "thunk"
+      this.tone(2400, 0.005, 0.03, 'square', 0.05);   // tick metallico della punta
+      if (kind === 'T') { this.tone(1318, 0.05, 0.12, 'triangle', 0.12); this.tone(1760, 0.11, 0.14, 'triangle', 0.10); this.vibe([0, 12, 20, 12]); }
+      else if (kind === 'D') { this.tone(1174, 0.05, 0.12, 'triangle', 0.10); this.vibe(14); }
+      else this.vibe(8);
+    },
     bull() {
       this.ensure();
       if (!this.muted) { this.tone(880, 0, 0.12, 'triangle', 0.2); this.tone(1320, 0.05, 0.2, 'triangle', 0.18); this.vibe(22); }

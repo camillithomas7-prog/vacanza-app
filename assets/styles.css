@@ -1498,3 +1498,81 @@ canvas.darts3d{position:absolute;inset:0;width:100%;height:100%;display:block;to
 .dfx-flash{position:fixed;inset:0;z-index:10000;pointer-events:none;
   background:radial-gradient(circle at 50% 40%,rgba(255,210,77,.45),transparent 68%);animation:dfxFlash .56s ease-out forwards}
 @keyframes dfxFlash{0%{opacity:.95}100%{opacity:0}}
+
+/* ===================== FRECCETTE UI v2 — look premium (iOS + Android) ===================== */
+.darts-sheet button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.darts-foot,.darts-standings{user-select:none;-webkit-user-select:none}
+
+/* header: badge modalità */
+.darts-title{display:flex;align-items:center;gap:8px}
+.dt-mode{font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#221a05;
+  background:linear-gradient(135deg,#ffd24d,#f0a02e);padding:3px 8px;border-radius:999px;line-height:1.4;
+  box-shadow:0 2px 8px -2px rgba(255,210,77,.5)}
+
+/* ambiente del tabellone: spotlight + riflesso caldo dal basso */
+.darts3d-wrap{background:
+  radial-gradient(120% 85% at 50% 28%,rgba(33,230,255,.055),transparent 62%),
+  radial-gradient(85% 55% at 50% 110%,rgba(255,210,77,.05),transparent 72%) !important}
+.d3d-hint{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);z-index:3;pointer-events:none;
+  font-size:11px;font-weight:600;color:#bfe9f2;background:rgba(8,12,16,.74);border:1px solid rgba(33,230,255,.32);
+  border-radius:999px;padding:5px 13px;backdrop-filter:blur(6px);white-space:nowrap;animation:d3dHint 2.6s ease-in-out infinite}
+@keyframes d3dHint{0%,100%{opacity:.95}50%{opacity:.5}}
+
+/* banner turno con pallino colore giocatore */
+.darts-current{display:flex;align-items:center;justify-content:center;gap:7px;font-size:12px}
+.darts-current .dcc{width:8px;height:8px;border-radius:50%;background:var(--pc,#21e6ff);box-shadow:0 0 9px var(--pc,#21e6ff);flex:none}
+.darts-current b{font-size:13px}
+
+/* i 3 tiri: pill con segmento (T20/D16/BULL) + punti */
+.dthrow{gap:7px;margin-bottom:5px}
+.dslot{min-width:54px;min-height:37px;padding:4px 8px 5px;border-radius:11px;font-size:14px;font-weight:800;letter-spacing:.01em;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15;font-family:'Geist Mono',ui-monospace,monospace;
+  border:1px dashed var(--border);color:var(--text-faint)}
+.dslot small{font-size:8.5px;font-weight:600;opacity:.72;letter-spacing:.03em}
+.dslot.filled{border-style:solid;border-color:rgba(74,222,128,.55);color:#7ff0ac;background:rgba(74,222,128,.1)}
+.dslot.kD.filled{border-color:rgba(255,176,46,.55);color:#ffcf7d;background:rgba(255,176,46,.1)}
+.dslot.kT.filled{border-color:rgba(255,45,155,.55);color:#ff8ac4;background:rgba(255,45,155,.1)}
+.dslot.kB.filled{border-color:rgba(255,210,77,.6);color:#ffe08a;background:rgba(255,210,77,.12);box-shadow:0 0 12px -4px rgba(255,210,77,.55)}
+.dslot.kM.filled{border-color:rgba(255,90,77,.45);color:#e8998f;background:rgba(255,90,77,.07)}
+.dthrow .dtot{font-size:11px}
+.dthrow .dtot b{font-size:20px;font-family:'Geist Mono',ui-monospace,monospace}
+
+/* moltiplicatori color-coded */
+.dmult{gap:7px;margin-bottom:6px}
+.dm{padding:7px 0;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;border-radius:10px;
+  background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.015));transition:.15s;color:var(--text-muted)}
+.dm.active{border-color:rgba(74,222,128,.6);background:rgba(74,222,128,.13);color:#7ff0ac;
+  box-shadow:0 0 16px -5px rgba(74,222,128,.55),inset 0 0 0 1px rgba(74,222,128,.35)}
+.dm[data-m="2"].active{border-color:rgba(255,176,46,.6);background:rgba(255,176,46,.12);color:#ffcf7d;
+  box-shadow:0 0 16px -5px rgba(255,176,46,.55),inset 0 0 0 1px rgba(255,176,46,.4)}
+.dm[data-m="3"].active{border-color:rgba(255,45,155,.6);background:rgba(255,45,155,.12);color:#ff8ac4;
+  box-shadow:0 0 16px -5px rgba(255,45,155,.55),inset 0 0 0 1px rgba(255,45,155,.4)}
+
+/* tastierino numeri */
+.dboard{gap:6px;margin:5px 0}
+.dnum{padding:7px 0;font-size:14px;font-weight:700;border-radius:10px;font-variant-numeric:tabular-nums;
+  background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.018));
+  border:1px solid rgba(255,255,255,.09);box-shadow:0 2px 6px -2px rgba(0,0,0,.45);
+  transition:transform .07s,background .15s,border-color .15s}
+.dnum:active{transform:scale(.92);background:var(--accent-soft);border-color:var(--accent)}
+.dnum.dbull{background:linear-gradient(180deg,rgba(224,180,104,.17),rgba(224,180,104,.06));
+  border-color:rgba(224,180,104,.45);color:#ffd98c;font-weight:800}
+.dnum.dbull:active{background:rgba(224,180,104,.28);border-color:#ffd24d}
+.dnum.dmiss{background:rgba(255,90,77,.05);border-color:rgba(255,90,77,.24);color:#e8998f}
+.dnum.dmiss:active{background:rgba(255,90,77,.15);border-color:#ff5a4d}
+
+/* checkout pill */
+.dcheckout{display:flex;align-items:center;justify-content:center;gap:6px;width:max-content;max-width:96%;
+  margin:0 auto 6px;padding:4px 13px;border-radius:999px;font-size:11px;
+  background:rgba(33,230,255,.07);border:1px solid rgba(33,230,255,.26)}
+.dcheckout b{font-family:'Geist Mono',ui-monospace,monospace;font-size:13px}
+
+/* conferma / annulla */
+.darts-foot .drow .btn{padding:11px;font-size:13.5px;font-weight:800;border-radius:12px;letter-spacing:.01em}
+.darts-foot #dOk{background:linear-gradient(135deg,#37d980,#1da85f);border:none;color:#04120a;
+  box-shadow:0 8px 22px -8px rgba(55,217,128,.55)}
+.darts-foot #dOk.bust{background:linear-gradient(135deg,#ff6257,#d1352c);color:#fff;
+  box-shadow:0 8px 22px -8px rgba(255,98,87,.55)}
+.darts-foot #dOk.win{background:linear-gradient(135deg,#ffd24d,#f0a02e);color:#221a05;
+  box-shadow:0 8px 26px -8px rgba(255,210,77,.65);animation:dOkWin 1.1s ease-in-out infinite}
+@keyframes dOkWin{0%,100%{transform:none}50%{transform:scale(1.025)}}

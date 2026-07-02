@@ -2570,7 +2570,7 @@ function openDarts() {
     overlay.innerHTML = `
       <div class="darts-sheet">
         <div class="darts-top">
-          <div class="darts-title">🎯 ${game.start}</div>
+          <div class="darts-title">🎯 ${game.start} <span class="dt-mode">Double out</span></div>
           <div class="row gap">
             <button class="icon-btn" id="dRules" title="Regole ufficiali">?</button>
             <button class="icon-btn" id="dMute" title="Suoni">${(window.DartsFX && DartsFX.muted) ? '🔇' : '🔊'}</button>
@@ -2604,7 +2604,7 @@ function openDarts() {
             </div>
           </div>
         </div>
-        <div class="darts3d-wrap" id="d3dSlot"></div>
+        <div class="darts3d-wrap" id="d3dSlot">${game.winner == null && !localStorage.getItem('darts_tap_hint') ? '<div class="d3d-hint">👆 Tocca il bersaglio per segnare</div>' : ''}</div>
         ${game.winner != null ? `
           <div class="darts-winner">
             <div class="dw-trophy">🏆</div>
@@ -2615,7 +2615,7 @@ function openDarts() {
           </div>` : ''}
         ${game.winner == null ? `
         <div class="darts-foot">
-          <div class="darts-current">Turno di <b>${escapeHtml(cur.name)}</b> — gli restano <b id="dResto">${cur.score}</b> · 3 tiri</div>
+          <div class="darts-current"><span class="dcc" style="--pc:${pcolor(cur, game.turn)}"></span>Turno di <b>${escapeHtml(cur.name)}</b> — restano <b id="dResto">${cur.score}</b></div>
           <div class="dcheckout" id="dCheckout" style="display:none">🎯 Per chiudere: <b></b></div>
           <div class="dthrow">
             <span class="dslot" data-i="0">–</span>
@@ -2699,8 +2699,18 @@ function openDarts() {
       function refresh() {
         slots.forEach((s, i) => {
           const has = darts[i] != null;
-          s.textContent = has ? (darts[i] === 0 ? '✗' : darts[i]) : '–';
-          s.classList.toggle('filled', has);
+          const sg = segs[i];
+          let lab = '–', kind = '';
+          if (has) {
+            if (sg === 'M') { lab = '✗'; kind = 'kM'; }
+            else if (sg === '50') { lab = 'BULL'; kind = 'kB'; }
+            else if (sg === '25') { lab = '25'; kind = 'kB'; }
+            else if (sg[0] === 'T') { lab = sg; kind = 'kT'; }
+            else if (sg[0] === 'D') { lab = sg; kind = 'kD'; }
+            else { lab = sg.slice(1); kind = 'kS'; }
+          }
+          s.className = 'dslot' + (has ? ' filled ' + kind : '');
+          s.innerHTML = has ? `${lab}<small>${darts[i]} pt</small>` : '–';
         });
         const sum = darts.reduce((a, b) => a + b, 0);
         sumEl.textContent = sum;
@@ -2719,7 +2729,11 @@ function openDarts() {
           actScoreEl.classList.toggle('bust', bust);
         }
         if (barEl) barEl.textContent = ev.busted ? cur.score : ev.score;
-        if (okBtn) okBtn.textContent = ev.busted ? 'Sballato' : ev.won ? 'Chiudi 🏆' : 'Conferma';
+        if (okBtn) {
+          okBtn.textContent = ev.busted ? 'Sballato' : ev.won ? 'Chiudi 🏆' : 'Conferma';
+          okBtn.classList.toggle('bust', ev.busted);
+          okBtn.classList.toggle('win', ev.won);
+        }
         // consiglio di chiusura (checkout) sul rimanente live, con le freccette ancora disponibili
         if (coEl) {
           const co = (!bust && !ev.won && ev.score >= 2) ? dartsCheckout(ev.score, 3 - darts.length) : '';
@@ -2730,26 +2744,42 @@ function openDarts() {
 
       multBtns.forEach(b => b.onclick = () => { mult = +b.dataset.m; refresh(); });
 
-      overlay.querySelectorAll('.dnum').forEach(b => b.onclick = () => {
+      // registra una freccia — dal tastierino o toccando direttamente il bersaglio
+      const dartColor = pcolor(cur, game.turn);
+      const registerDart = (base, mc, pt) => {
         window.DartsFX && DartsFX.ensure();
         overlay.querySelector('#dStandings')?.classList.remove('open');  // chiudi la tendina quando metti i punti
         if (darts.length >= 3) { toast('Hai già fatto 3 tiri — premi Conferma', true); return; }
-        const base = +b.dataset.v;
-        const fixed = b.hasAttribute('data-fixed');
-        const val = fixed ? base : base * mult; // 25/50/Miss senza moltiplicatore
-        const mc = base === 50 ? 'B' : base === 25 ? '25' : base === 0 ? 'M' : (mult === 3 ? 'T' : mult === 2 ? 'D' : 'S');
-        // ── effetto 3D: freccia che vola sul numero + esplosione ──
-        if (window.Darts3D) { try { window.Darts3D.hit(base, mc); } catch (e) {} }
-        if (window.DartsFX) { if (base === 50) DartsFX.bull(); else if (base !== 0) DartsFX.hit(); }
+        const val = mc === 'B' ? 50 : mc === '25' ? 25 : mc === 'M' ? 0 : base * (mc === 'T' ? 3 : mc === 'D' ? 2 : 1);
+        // ── effetto: freccia col colore del giocatore che vola e resta piantata + flash spicchio ──
+        if (window.Darts3D) { try { window.Darts3D.hit(base, mc, dartColor, pt); } catch (e) {} }
+        if (window.DartsFX) { if (mc === 'B') DartsFX.bull(); else if (mc !== 'M') DartsFX.hit(mc); }
+        const hint = overlay.querySelector('.d3d-hint');
+        if (hint) { hint.remove(); localStorage.setItem('darts_tap_hint', '1'); }
         darts.push(val);
-        segs.push(base === 50 ? '50' : base === 25 ? '25' : base === 0 ? 'M' : mc + base); // segmento colpito: T20/D16/S5/25/50/M
+        segs.push(mc === 'B' ? '50' : mc === '25' ? '25' : mc === 'M' ? 'M' : mc + base); // segmento colpito: T20/D16/S5/25/50/M
         mult = 1; // si riparte da Singolo dopo ogni freccia
         refresh();
+      };
+
+      overlay.querySelectorAll('.dnum').forEach(b => b.onclick = () => {
+        const base = +b.dataset.v;
+        const mc = base === 50 ? 'B' : base === 25 ? '25' : base === 0 ? 'M' : (mult === 3 ? 'T' : mult === 2 ? 'D' : 'S');
+        registerDart(base, mc);
       });
 
-      overlay.querySelector('#dBack').onclick = () => { darts.pop(); segs.pop(); mult = 1; refresh(); };
+      // tocco diretto sul tabellone → segna la freccia esattamente dove tocchi
+      if (window.Darts3D) window.Darts3D.onHit = (base, mc, pt) => registerDart(base, mc, pt);
+
+      overlay.querySelector('#dBack').onclick = () => {
+        darts.pop(); segs.pop(); mult = 1;
+        if (window.Darts3D && window.Darts3D.removeLast) { try { window.Darts3D.removeLast(); } catch (e) {} }
+        refresh();
+      };
       overlay.querySelector('#dOk').onclick = () => submit(darts.reduce((a, b) => a + b, 0), segs.slice(), darts.slice());
       refresh();
+    } else if (window.Darts3D) {
+      window.Darts3D.onHit = null;   // partita finita: il bersaglio non registra più tocchi
     }
   }
 
@@ -2785,6 +2815,7 @@ function openDarts() {
       else if (points >= 60) DartsFX.callout('', 'good');
     }
     dartsSave(game);
+    if (window.Darts3D && window.Darts3D.clearTurn) { try { window.Darts3D.clearTurn(); } catch (e) {} }  // togli le frecce dal tabellone
     renderGame();
     if (game.winner === pi && window.Darts3D && window.Darts3D.celebrate)
       setTimeout(() => { try { window.Darts3D.celebrate(); } catch (e) {} }, 90);
@@ -2800,6 +2831,7 @@ function openDarts() {
     game.winner = null;
     game.turn = mv.pi;
     dartsSave(game);
+    if (window.Darts3D && window.Darts3D.clearTurn) { try { window.Darts3D.clearTurn(); } catch (e) {} }
     renderGame();
   }
 
