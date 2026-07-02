@@ -2207,7 +2207,7 @@ function dartsRecordGame(game) {
   }));
   const date = Date.now();
   const uid = 'D' + date + '_' + Math.random().toString(36).slice(2, 8);
-  const scores = game.players.map(p => ({ name: p.name, score: p.score }));
+  const scores = game.players.map(p => ({ name: p.name, score: p.score, segs: p.segCounts || {} }));
   h[key].games.unshift({ uid, date, start: game.start, winner: winnerName, scores, best, low });
   game._uid = uid;  // per poter annullare anche sul server con undo
   dartsHistSave(h);
@@ -2239,7 +2239,7 @@ function dartsAggregate(rows) {
     if (!h[key]) h[key] = { players: players.slice().sort((a, b) => a.localeCompare(b)), games: [], wins: {} };
     players.forEach(n => { if (h[key].wins[n] == null) h[key].wins[n] = 0; });
     if (r.winner) h[key].wins[r.winner] = (h[key].wins[r.winner] || 0) + 1;
-    h[key].games.push({ uid: r.uid, date: +r.played_at, start: +r.start, winner: r.winner, best: parse(r.best), low: parse(r.low) });
+    h[key].games.push({ uid: r.uid, date: +r.played_at, start: +r.start, winner: r.winner, best: parse(r.best), low: parse(r.low), scores: parse(r.scores) || [] });
   });
   Object.values(h).forEach(g => g.games.sort((a, b) => b.date - a.date));
   return h;
@@ -2272,11 +2272,13 @@ async function openDartsHistory() {
   }
   const keys = Object.keys(h).filter(k => h[k].games.length > 0).sort((a, b) => h[b].games.length - h[a].games.length);
   const fmtDate = (ts) => { const d = new Date(ts); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(2)}`; };
+  const segLabel = (k) => k === '50' ? 'Bull 50' : k === '25' ? '25' : k === 'M' ? 'Fuori' : (k[0] === 'T' ? 'Triplo ' : k[0] === 'D' ? 'Doppio ' : 'Singolo ') + k.slice(1);
+  const segStyle = '<style>.dh-seg{padding:8px 2px;border-bottom:1px solid rgba(255,255,255,.06);font-size:13px;line-height:2.1}.dh-seg:last-child{border-bottom:0}.dh-seg b{margin-right:6px}.dh-segchip{display:inline-block;background:rgba(33,230,255,.12);color:#21e6ff;border-radius:8px;padding:2px 9px;margin:2px 3px;font-size:12px}.dh-segchip em{font-style:normal;opacity:.75}</style>';
   let body;
   if (!keys.length) {
     body = `<h2>🏆 Storico freccette</h2><p class="muted" style="text-align:center;padding:18px 6px 14px">Ancora nessuna partita su questo gruppo.<br>Se hai già giocato su questo telefono, tocca Sincronizza.</p><button class="btn ghost full" id="dhSync" style="margin-bottom:10px">🔄 Sincronizza questo telefono</button><button class="btn primary full" id="dhClose">Chiudi</button>`;
   } else {
-    body = `<h2>🏆 Storico freccette</h2><p class="muted" style="margin:-6px 0 10px">Un gruppo per ogni combinazione di sfidanti.</p><button class="btn ghost full" id="dhSync" style="margin-bottom:14px">🔄 Sincronizza questo telefono</button>` + keys.map(k => {
+    body = segStyle + `<h2>🏆 Storico freccette</h2><p class="muted" style="margin:-6px 0 10px">Un gruppo per ogni combinazione di sfidanti.</p><button class="btn ghost full" id="dhSync" style="margin-bottom:14px">🔄 Sincronizza questo telefono</button>` + keys.map(k => {
       const g = h[k];
       const standings = Object.keys(g.wins).sort((a, b) => g.wins[b] - g.wins[a]);
       const top = g.wins[standings[0]] || 0;
@@ -2290,12 +2292,29 @@ async function openDartsHistory() {
           ${allBest ? `<span class="dh-rec hi"><small>🔥 Tiro record</small><b>${allBest.val}</b><span>${escapeHtml(allBest.name)}</span></span>` : ''}
           ${allLow ? `<span class="dh-rec lo"><small>🥶 Tiro più basso</small><b>${allLow.val}</b><span>${escapeHtml(allLow.name)}</span></span>` : ''}
         </div>` : '';
+      // ── conteggio segmenti colpiti per giocatore (T20, D16, …) sommato su tutte le partite del gruppo ──
+      const segTot = {};
+      g.games.forEach(gm => (gm.scores || []).forEach(s => {
+        if (!s || !s.segs) return;
+        const m = segTot[s.name] || (segTot[s.name] = {});
+        for (const kk in s.segs) m[kk] = (m[kk] || 0) + s.segs[kk];
+      }));
+      const anySeg = Object.values(segTot).some(m => Object.keys(m).length);
+      const segBlock = anySeg ? `<details class="dh-games"><summary>🎯 Bersagli più colpiti</summary>
+          ${g.players.map(n => {
+            const m = segTot[n] || {};
+            const top = Object.keys(m).filter(k => m[k] > 0).sort((a, b) => m[b] - m[a]).slice(0, 8);
+            if (!top.length) return '';
+            return `<div class="dh-seg"><b>${escapeHtml(n)}</b> ${top.map(k => `<span class="dh-segchip">${segLabel(k)} <em>×${m[k]}</em></span>`).join('')}</div>`;
+          }).join('')}
+        </details>` : '';
       return `<div class="dh-group">
         <div class="dh-gtitle">${escapeHtml(g.players.join(' · '))}<span>${g.games.length} ${g.games.length === 1 ? 'partita' : 'partite'}</span></div>
         <div class="dh-standings">
           ${standings.map((n, i) => { const lead = g.wins[n] === top && top > 0; return `<div class="dh-row ${lead ? 'lead' : ''}"><span class="dh-pos">${lead ? '👑' : (i + 1) + '°'}</span><span class="dh-name">${escapeHtml(n)}</span><span class="dh-w"><b>${g.wins[n]}</b> <small>vitt.</small></span></div>`; }).join('')}
         </div>
         ${recRow}
+        ${segBlock}
         <details class="dh-games"><summary>Tutte le partite (${g.games.length})</summary>
           ${g.games.map(gm => `<div class="dh-game"><span>🏆 <b>${escapeHtml(gm.winner)}</b></span><span class="muted">${fmtDate(gm.date)} · ${gm.start}${gm.best ? ` · max <b style="color:#21e6ff">${gm.best.val}</b> ${escapeHtml(gm.best.name)}${gm.low ? ` · min ${gm.low.val}` : ''}` : ''}</span></div>`).join('')}
         </details>
@@ -2593,6 +2612,7 @@ function openDarts() {
 
     if (game.winner == null) {
       let darts = [];   // i 3 tiri di questo turno
+      let segs = [];    // segmenti colpiti nel turno (es. 'T20','D16','S5','25','50','M')
       let mult = 1;     // moltiplicatore selezionato (Singolo/Doppio/Triplo)
       const slots = overlay.querySelectorAll('.dslot');
       const sumEl = overlay.querySelector('#dSum');
@@ -2640,28 +2660,32 @@ function openDarts() {
         overlay.querySelector('#dStandings')?.classList.remove('open');  // chiudi la tendina quando metti i punti
         if (darts.length >= 3) { toast('Hai già fatto 3 tiri — premi Conferma', true); return; }
         const base = +b.dataset.v;
-        const val = b.hasAttribute('data-fixed') ? base : base * mult; // 25/50/Miss senza moltiplicatore
+        const fixed = b.hasAttribute('data-fixed');
+        const val = fixed ? base : base * mult; // 25/50/Miss senza moltiplicatore
+        const mc = base === 50 ? 'B' : base === 25 ? '25' : base === 0 ? 'M' : (mult === 3 ? 'T' : mult === 2 ? 'D' : 'S');
         // ── effetto 3D: freccia che vola sul numero + esplosione ──
-        if (window.Darts3D) {
-          const mc = base === 50 ? 'B' : base === 25 ? '25' : base === 0 ? 'M' : (mult === 3 ? 'T' : mult === 2 ? 'D' : 'S');
-          try { window.Darts3D.hit(base, mc); } catch (e) {}
-        }
+        if (window.Darts3D) { try { window.Darts3D.hit(base, mc); } catch (e) {} }
         if (window.DartsFX) { if (base === 50) DartsFX.bull(); else if (base !== 0) DartsFX.hit(); }
         darts.push(val);
+        segs.push(base === 50 ? '50' : base === 25 ? '25' : base === 0 ? 'M' : mc + base); // segmento colpito: T20/D16/S5/25/50/M
         mult = 1; // si riparte da Singolo dopo ogni freccia
         refresh();
       });
 
-      overlay.querySelector('#dBack').onclick = () => { darts.pop(); mult = 1; refresh(); };
-      overlay.querySelector('#dOk').onclick = () => submit(darts.reduce((a, b) => a + b, 0));
+      overlay.querySelector('#dBack').onclick = () => { darts.pop(); segs.pop(); mult = 1; refresh(); };
+      overlay.querySelector('#dOk').onclick = () => submit(darts.reduce((a, b) => a + b, 0), segs.slice());
       refresh();
     }
   }
 
-  function submit(points) {
+  function submit(points, turnSegs) {
     if (points < 0 || points > 180) { toast('Max 180 punti per turno', true); return; }
     const pi = game.turn;
     const p = game.players[pi];
+    // conteggio dei segmenti colpiti (T20, D16, …) — accumulato prima di registrare l'eventuale vittoria
+    turnSegs = turnSegs || [];
+    p.segCounts = p.segCounts || {};
+    turnSegs.forEach(k => { p.segCounts[k] = (p.segCounts[k] || 0) + 1; });
     const remaining = p.score - points;
     let busted = false;
     if (remaining < 0) {
@@ -2675,7 +2699,7 @@ function openDarts() {
         if (!game.recorded) { dartsRecordGame(game); game.recorded = true; }  // salva nello storico del gruppo
       }
     }
-    game.log.push({ pi, points, busted });
+    game.log.push({ pi, points, busted, segs: turnSegs });
     if (game.winner == null) game.turn = (game.turn + 1) % game.players.length;
     // ── annunci sonori/visivi del turno ──
     if (window.DartsFX) {
@@ -2696,6 +2720,7 @@ function openDarts() {
     if (game.recorded) { dartsUnrecordLast(game); game.recorded = false; }  // annulla la vittoria registrata
     const mv = game.log.pop();
     const p = game.players[mv.pi];
+    if (mv.segs && p.segCounts) mv.segs.forEach(k => { if (p.segCounts[k]) p.segCounts[k]--; });  // annulla i conteggi segmenti del turno
     if (!mv.busted) { p.score += mv.points; p.throws.pop(); }
     game.winner = null;
     game.turn = mv.pi;
